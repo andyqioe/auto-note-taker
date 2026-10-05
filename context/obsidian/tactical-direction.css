@@ -1,0 +1,72 @@
+/* auto-note-taker: managed snippet. Reinstalling updates this file; delete this line to keep your own edits. */
+/* Styles notes whose properties include `cssclasses: [tactical-direction]`. Every rule degrades to stock callouts. */
+
+.tactical-direction {
+  --td-accent: 99, 102, 241;
+  --td-agent: 148, 163, 184;
+}
+
+/* The filename is an identifier; show it as a quiet slug above the human title. */
+.tactical-direction .inline-title {
+  font-family: var(--font-monospace);
+  font-size: 0.8em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+}
+
+/* Banner: the first callout states the binding rule in the status color. */
+.tactical-direction .callout[data-callout-metadata~="banner"] {
+  padding: 1.1em 1.4em;
+  margin-block: 0.75em 2em;
+  border: 1px solid rgba(var(--callout-color), 0.35);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(var(--callout-color), 0.2), rgba(var(--callout-color), 0.04) 70%);
+}
+.tactical-direction .callout[data-callout-metadata~="banner"] .callout-title {
+  font-family: var(--font-monospace);
+  font-size: 0.75em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tactical-direction .callout[data-callout-metadata~="banner"] .callout-content {
+  font-size: 1.12em;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-normal);
+}
+
+/* Numbered sections read as chapters. */
+.tactical-direction h2 {
+  margin-top: 2.2em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid rgba(var(--td-accent), 0.3);
+}
+
+/* Verbatim exchange: user messages in the accent color, agent messages in slate, like a chat. */
+.tactical-direction .callout[data-callout-metadata~="user"] {
+  --callout-color: var(--td-accent);
+  --callout-icon: lucide-user-round;
+  margin-right: 2.5em;
+}
+.tactical-direction .callout[data-callout-metadata~="agent"] {
+  --callout-color: var(--td-agent);
+  --callout-icon: lucide-bot;
+  margin-left: 2.5em;
+}
+.tactical-direction .callout:is([data-callout-metadata~="user"], [data-callout-metadata~="agent"]) .callout-title {
+  font-family: var(--font-monospace);
+  font-size: 0.8em;
+}
+.tactical-direction .callout:is([data-callout-metadata~="user"], [data-callout-metadata~="agent"]) pre {
+  margin: 0.25em 0 0;
+  background: transparent;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+}
+
+/* Diagrams scale down to the reading width instead of scrolling sideways. */
+.tactical-direction .mermaid svg {
+  max-width: 100% !important;
+  height: auto;
+}

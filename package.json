@@ -1,13 +1,14 @@
 {
   "name": "auto-note-taker",
-  "version": "0.1.1",
-  "description": "Inject persistent tactical-direction recording rules into a project's AGENTS.md",
+  "version": "0.2.0",
+  "description": "Inject persistent tactical-direction recording rules into a project's AGENTS.md, with an interactive folder picker and Obsidian styling",
   "type": "module",
   "bin": {
     "auto-note-taker": "bin/install.mjs"
   },
   "files": [
     "bin/",
+    "lib/",
     "context/",
     "README.md"
   ],
@@ -15,7 +16,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/install.test.mjs"
+    "test": "node --test test/*.test.mjs"
   },
   "repository": {
     "type": "git",

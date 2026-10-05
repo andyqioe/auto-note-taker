@@ -1,64 +1,165 @@
 #!/usr/bin/env node
-import fs from 'node:fs/promises';
+import {existsSync, statSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {defaultNotesDir, expandHome, installedNotesDir, notesDirFor, planInstall, readProject, resolveNotesDir, validateNotesDir, writeInstall} from '../lib/install.mjs';
+import {knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
+import {Back, Cancelled, browsePrompt, c, confirmPrompt, displayPath, glyph, inputPrompt, run, selectPrompt} from '../lib/ui.mjs';
 
-const begin = '<!-- BEGIN tactical-direction-context -->';
-const end = '<!-- END tactical-direction-context -->';
+const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--obsidian-extras | --no-obsidian-extras] [--yes] [--check]
+
+Installs or updates one managed block in AGENTS.md telling agents to record tactical direction as Obsidian notes.
+Run in a terminal with no flags to pick the project and notes folder interactively.
+
+  --project PATH          project whose AGENTS.md receives the block (default: current directory)
+  --notes-dir PATH        where notes go; relative paths are inside the project (default: "${defaultNotesDir}")
+  --obsidian-extras       also install the note styling snippet and a Bases dashboard into the notes' vault
+  --no-obsidian-extras    never offer them
+  --yes, -y               do not prompt; use defaults for anything not given
+  --check                 report whether the block is current, without writing`;
+
 const args = process.argv.slice(2);
-const options = {project: process.cwd(), 'notes-dir': 'Tactical Direction'};
-let check = false;
+const options = {};
+let check = false, yes = false, extras;
 try {
-  for (let i=0; i<args.length; i++) {
-    const arg=args[i];
-    if (arg === '--help' || arg === '-h') {
-      console.log('Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--check]\nInstalls or updates one managed block in AGENTS.md. --check reports drift without writing.');
-      process.exit(0);
-    }
-    if (arg === '--check') { check=true; continue; }
-    if (!['--project','--notes-dir'].includes(arg) || !args[i+1] || args[i+1].startsWith('--')) throw new Error(`Invalid argument: ${arg}`);
-    options[arg.slice(2)]=args[++i];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--help' || arg === '-h') { console.log(usage); process.exit(0); }
+    if (arg === '--check') { check = true; continue; }
+    if (arg === '--yes' || arg === '-y') { yes = true; continue; }
+    if (arg === '--obsidian-extras' || arg === '--no-obsidian-extras') { extras = arg === '--obsidian-extras'; continue; }
+    if (!['--project', '--notes-dir'].includes(arg) || !args[i + 1] || args[i + 1].startsWith('--')) throw new Error(`Invalid argument: ${arg}`);
+    options[arg.slice(2)] = args[++i];
   }
-  if (/[\r\n`]/.test(options['notes-dir']) || !options['notes-dir'].trim()) throw new Error('notes-dir must be a nonempty, single-line path without backticks');
-  const root=await fs.realpath(path.resolve(options.project));
-  if (!(await fs.stat(root)).isDirectory()) throw new Error('project must be an existing directory');
-  const agents=path.join(root,'AGENTS.md');
-  // Preserve a project's AGENTS.md -> CLAUDE.md convention. Refuse external targets.
-  let target=agents, prior='';
-  try {
-    target=await fs.realpath(agents);
-    const relative=path.relative(root,target);
-    if (relative.startsWith('..'+path.sep) || relative==='..' || path.isAbsolute(relative)) throw new Error('AGENTS.md points outside the project; install in its owning project instead');
-    if (!(await fs.stat(target)).isFile()) throw new Error('AGENTS.md must be a regular file or internal symlink');
-    prior=await fs.readFile(target,'utf8');
-  } catch(error) {
-    if(error.code!=='ENOENT') throw error;
-    // A dangling symlink is not a missing instructions file.
-    try { await fs.lstat(agents); throw new Error('AGENTS.md is a dangling symlink'); }
-    catch(e) { if(e.code!=='ENOENT') throw e; }
+  const interactive = process.stdin.isTTY && process.stdout.isTTY && !check && !yes && !(options.project && options['notes-dir']);
+  if (interactive) await wizard();
+  else await direct();
+} catch (error) {
+  if (error instanceof Cancelled) { process.exitCode = 130; }
+  else { console.error(`auto-note-taker: ${error.message}`); process.exitCode = 1; }
+}
+
+async function direct() {
+  const plan = await planInstall(options.project ?? process.cwd(), options['notes-dir'] ?? defaultNotesDir);
+  if (check) {
+    console.log(plan.change === 'current' ? 'Context is current.' : 'Context is missing or out of date.');
+    process.exitCode = plan.change === 'current' ? 0 : 1;
+    return;
   }
-  const template=await fs.readFile(fileURLToPath(new URL('../context/AGENTS.md',import.meta.url)),'utf8');
-  const block=begin+'\n'+template.replaceAll('{{notes_dir}}',()=>options['notes-dir']).trimEnd()+'\n'+end;
-  const starts=prior.split(begin).length-1, ends=prior.split(end).length-1;
-  if(starts!==ends || starts>1 || (starts===1 && prior.indexOf(end)<prior.indexOf(begin))) throw new Error('Malformed or duplicate managed block; no changes made');
-  const next=starts ? prior.slice(0,prior.indexOf(begin))+block+prior.slice(prior.indexOf(end)+end.length)
-    : prior+(prior ? (prior.endsWith('\n\n')?'':prior.endsWith('\n')?'\n':'\n\n') : '')+block+'\n';
-  if(check) {
-    console.log(next===prior?'Context is current.':'Context is missing or out of date.');
-    process.exitCode=next===prior?0:1;
-  } else if(next===prior) console.log(`Already installed: ${target}`);
-  else {
-    // Do not overwrite an edit that landed while the installer was reading its template.
-    const current=await fs.readFile(target,'utf8').catch(e=>{if(e.code==='ENOENT')return '';throw e;});
-    if(current!==prior) throw new Error('Project instructions changed during installation; retry');
-    const temporary=target+'.tactical-direction-'+process.pid;
-    const mode=await fs.stat(target).then(s=>s.mode & 0o777).catch(()=>0o644);
-    await fs.writeFile(temporary,next,{flag:'wx',mode});
-    try { await fs.rename(temporary,target); }
-    finally { await fs.unlink(temporary).catch(e=>{if(e.code!=='ENOENT')throw e;}); }
-    console.log(`Installed: ${target}\nTactical notes: ${options['notes-dir']}`);
+  if (await writeInstall(plan)) console.log(`Installed: ${plan.target}\nTactical notes: ${plan.notesDir}`);
+  else console.log(`Already installed: ${plan.target}`);
+  if (extras) {
+    const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
+    if (!vault) console.log('Obsidian extras skipped: the notes folder is not inside an Obsidian vault.');
+    else { const steps = await planExtras(vault, notesAbsolute); await writeExtras(steps); steps.forEach(s => console.log(`Obsidian ${s.label}: ${s.action} ${s.path}`)); }
   }
-} catch(error) {
-  console.error(`auto-note-taker: ${error.message}`);
-  process.exitCode=1;
+}
+
+async function wizard() {
+  const out = s => process.stdout.write(s + '\n');
+  out('');
+  out(`${c.accent(glyph.done)}  ${c.bold('auto-note-taker')}  ${c.dim('· record tactical direction as Obsidian notes')}`);
+  out(c.accent(glyph.bar));
+  const vaults = await knownVaults();
+  const state = {project: options.project, notes: options['notes-dir']};
+  const steps = [];
+  if (!options.project) steps.push(chooseProject);
+  if (!options['notes-dir']) steps.push(chooseNotes);
+  steps.push(chooseExtras, confirmInstall);
+  // A step returns 'skipped' when it had nothing to ask, so going back passes over it instead of bouncing forward.
+  for (let i = 0, backward = false; i < steps.length;) {
+    try {
+      const result = await steps[i](state, vaults);
+      if (backward && result === 'skipped' && i > 0) { i--; continue; }
+      backward = false; i++;
+    } catch (e) { if (!(e instanceof Back)) throw e; backward = true; if (i > 0) i--; }
+  }
+  if (!state.confirmed) { out(c.dim('   Nothing changed.')); return; }
+
+  const plan = state.plan;
+  await writeInstall(plan);
+  if (state.extraSteps && state.extras) await writeExtras(state.extraSteps);
+  out('');
+  const verb = {create: 'Created', append: 'Added block to', update: 'Updated block in', current: 'Already current:'}[plan.change];
+  out(`${c.green(glyph.check)}  ${verb} ${displayPath(plan.target)}`);
+  for (const s of state.extras ? state.extraSteps ?? [] : []) if (s.action === 'create' || s.action === 'update')
+    out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path)}`);
+  const styled = state.extras && state.extraSteps?.some(s => s.path.endsWith('.css') && s.action !== 'current');
+  if (styled) out(c.dim(`   Reopen the vault in Obsidian if the snippet does not apply right away.`));
+  out('');
+  const quote = s => /^[\w./~-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`;
+  out(c.dim('   Same install without prompts:'));
+  out(c.dim(`   npx --yes github:andyqioe/auto-note-taker --project ${quote(plan.root)} --notes-dir ${quote(plan.notesDir)}${state.extras ? ' --obsidian-extras' : ''}`));
+  out('');
+}
+
+async function chooseProject(state) {
+  const cwd = process.cwd();
+  const marker = ['AGENTS.md', 'CLAUDE.md', '.git'].find(f => existsSync(path.join(cwd, f)));
+  const choice = await run(selectPrompt({title: 'Project', options: [
+    {label: 'This folder', hint: displayPath(cwd, 44) + (marker ? `  · has ${marker}` : ''), value: 'cwd', summary: cwd},
+    {label: 'Browse…', hint: 'pick a folder with the arrow keys', value: 'browse', transient: true},
+    {label: 'Type a path…', value: 'type', transient: true},
+  ]}));
+  if (choice === 'cwd') state.project = cwd;
+  else if (choice === 'browse') {
+    state.project = await run(browsePrompt({title: 'Project folder', start: cwd, allowNew: false}));
+  } else state.project = path.resolve(expandHome(await run(inputPrompt({title: 'Project path', initial: displayPath(cwd) + '/', complete: true,
+    validate: v => isDirectory(path.resolve(expandHome(v))) ? '' : 'not an existing folder'}))));
+}
+const isDirectory = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
+
+async function chooseNotes(state, vaults) {
+  const {root, prior} = await readProject(state.project);
+  const current = installedNotesDir(prior);
+  const options = [];
+  if (current) options.push({label: 'Keep current', hint: current, value: {dir: current}, summary: current});
+  options.push({label: 'In this project', hint: `./${defaultNotesDir}`, value: {dir: defaultNotesDir}, summary: `./${defaultNotesDir}`});
+  for (const v of vaults.slice(0, 5)) options.push({label: `Obsidian · ${v.name}`, hint: displayPath(v.path, 44), value: {browse: v.path}, transient: true});
+  options.push({label: 'Browse…', hint: 'start from the project', value: {browse: root}, transient: true});
+  options.push({label: 'Type a path…', value: {type: true}, transient: true});
+  for (;;) {
+    const choice = await run(selectPrompt({title: 'Notes folder', options, back: true}));
+    try {
+      let absolute;
+      if (choice.dir) absolute = resolveNotesDir(root, choice.dir);
+      else if (choice.browse) {
+        const picked = await run(browsePrompt({title: 'Notes folder', start: choice.browse}));
+        absolute = typeof picked === 'string' ? picked : path.join(picked.newFolderIn, await run(inputPrompt({
+          title: `New folder in ${displayPath(picked.newFolderIn, 40)}`, initial: defaultNotesDir,
+          summaryTitle: 'Notes folder', summaryValue: name => path.join(picked.newFolderIn, name),
+          validate: v => !v.trim() ? 'name the folder' : /[\\/`\r\n]/.test(v) ? 'use a single folder name without slashes or backticks' : ''})));
+      } else absolute = path.resolve(root, expandHome(await run(inputPrompt({title: 'Notes path', placeholder: 'absolute, ~/…, or relative to the project',
+        complete: true, base: root, validate: v => validateNotesDir(v)}))));
+      state.notes = notesDirFor(root, absolute);
+      return;
+    } catch (e) { if (!(e instanceof Back)) throw e; }
+  }
+}
+
+async function chooseExtras(state) {
+  const plan = await planInstall(state.project, state.notes);
+  state.plan = plan;
+  const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
+  state.extraSteps = null;
+  state.extras = extras;
+  if (!vault || extras === false) return 'skipped';
+  state.extraSteps = await planExtras(vault, notesAbsolute);
+  const pending = state.extraSteps.filter(s => s.action === 'create' || s.action === 'update');
+  if (!pending.length) { state.extras = false; return 'skipped'; }
+  if (extras === true) return 'skipped';
+  const rel = p => path.relative(vault, p);
+  state.extras = await run(confirmPrompt({title: `Add styling and a dashboard to vault “${path.basename(vault)}”?`, detail: [
+    c.dim('Colored status banner, chat-style exchange, and a dashboard of every decision.'),
+    ...pending.map(s => `${c.accent(s.action === 'create' ? '+' : '~')} ${rel(s.path)}  ${c.dim(s.label)}`),
+  ]}));
+}
+
+async function confirmInstall(state) {
+  const plan = state.plan;
+  const what = {create: 'create', append: 'add block', update: 'update block', current: 'already current'}[plan.change];
+  const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir);
+  state.confirmed = await run(confirmPrompt({title: 'Install?', detail: [
+    `${c.dim('instructions')}  ${displayPath(plan.target, 40)}  ${c.dim('· ' + what)}`,
+    `${c.dim('notes       ')}  ${displayPath(notesAbsolute, 40)}${existsSync(notesAbsolute) ? '' : c.dim('  · new, created with the first note')}`,
+  ]}));
 }
