@@ -1,0 +1,25 @@
+{
+  "name": "auto-note-taker",
+  "version": "0.1.1",
+  "description": "Inject persistent tactical-direction recording rules into a project's AGENTS.md",
+  "type": "module",
+  "bin": {
+    "auto-note-taker": "bin/install.mjs"
+  },
+  "files": [
+    "bin/",
+    "context/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/install.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andyqioe/auto-note-taker.git"
+  },
+  "license": "UNLICENSED"
+}
