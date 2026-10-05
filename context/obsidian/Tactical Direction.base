@@ -25,7 +25,7 @@ views:
       - property: note.updated
         direction: DESC
     columnSize:
-      note.aliases: 400
+      note.aliases: 560
       file.name: 300
   - type: table
     name: Open
@@ -38,5 +38,5 @@ views:
       - file.name
       - note.updated
     columnSize:
-      note.aliases: 400
+      note.aliases: 560
       file.name: 300

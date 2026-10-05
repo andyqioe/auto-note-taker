@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {existsSync, statSync} from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {defaultNotesDir, expandHome, installedNotesDir, notesDirFor, planInstall, readProject, resolveNotesDir, validateNotesDir, writeInstall} from '../lib/install.mjs';
 import {knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
@@ -80,15 +81,24 @@ async function wizard() {
   if (state.extraSteps && state.extras) await writeExtras(state.extraSteps);
   out('');
   const verb = {create: 'Created', append: 'Added block to', update: 'Updated block in', current: 'Already current:'}[plan.change];
-  out(`${c.green(glyph.check)}  ${verb} ${displayPath(plan.target)}`);
+  const room = text => Math.max(24, (process.stdout.columns || 80) - text.length - 6);
+  out(`${c.green(glyph.check)}  ${verb} ${displayPath(plan.target, room(verb))}`);
   for (const s of state.extras ? state.extraSteps ?? [] : []) if (s.action === 'create' || s.action === 'update')
-    out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path)}`);
+    out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path, room('Created'))}`);
   const styled = state.extras && state.extraSteps?.some(s => s.path.endsWith('.css') && s.action !== 'current');
   if (styled) out(c.dim(`   Reopen the vault in Obsidian if the snippet does not apply right away.`));
   out('');
-  const quote = s => /^[\w./~-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`;
+  // Paths under home print as "$HOME/…" so the command stays short and still works when pasted into a shell.
+  const quote = s => {
+    const home = os.homedir();
+    if (s.startsWith(home + path.sep)) return `"$HOME/${s.slice(home.length + 1).replace(/["\\$`]/g, '\\$&')}"`;
+    return /^[\w./-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`;
+  };
   out(c.dim('   Same install without prompts:'));
-  out(c.dim(`   npx --yes github:andyqioe/auto-note-taker --project ${quote(plan.root)} --notes-dir ${quote(plan.notesDir)}${state.extras ? ' --obsidian-extras' : ''}`));
+  // One flag per line, joined with backslashes, so long paths never wrap mid-word and the block still pastes as one command.
+  const command = ['npx --yes github:andyqioe/auto-note-taker', `--project ${quote(plan.root)}`, `--notes-dir ${quote(plan.notesDir)}`,
+    ...(state.extras ? ['--obsidian-extras'] : [])];
+  out(c.dim(command.map((part, i) => `   ${i ? '  ' : ''}${part}`).join(' \\\n')));
   out('');
 }
 
@@ -147,19 +157,22 @@ async function chooseExtras(state) {
   const pending = state.extraSteps.filter(s => s.action === 'create' || s.action === 'update');
   if (!pending.length) { state.extras = false; return 'skipped'; }
   if (extras === true) return 'skipped';
-  const rel = p => path.relative(vault, p);
+  const room = Math.max(24, (process.stdout.columns || 80) - 36);
+  const rel = p => displayPath(path.relative(vault, p), room);
   state.extras = await run(confirmPrompt({title: `Add styling and a dashboard to vault “${path.basename(vault)}”?`, detail: [
     c.dim('Colored status banner, chat-style exchange, and a dashboard of every decision.'),
     ...pending.map(s => `${c.accent(s.action === 'create' ? '+' : '~')} ${rel(s.path)}  ${c.dim(s.label)}`),
   ]}));
 }
 
+function wide() { return Math.max(30, (process.stdout.columns || 80) - 30); }
+
 async function confirmInstall(state) {
   const plan = state.plan;
   const what = {create: 'create', append: 'add block', update: 'update block', current: 'already current'}[plan.change];
   const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir);
   state.confirmed = await run(confirmPrompt({title: 'Install?', detail: [
-    `${c.dim('instructions')}  ${displayPath(plan.target, 40)}  ${c.dim('· ' + what)}`,
-    `${c.dim('notes       ')}  ${displayPath(notesAbsolute, 40)}${existsSync(notesAbsolute) ? '' : c.dim('  · new, created with the first note')}`,
+    `${c.dim('instructions')}  ${displayPath(plan.target, wide())}  ${c.dim('· ' + what)}`,
+    `${c.dim('notes       ')}  ${displayPath(notesAbsolute, wide())}${existsSync(notesAbsolute) ? '' : c.dim('  · new')}`,
   ]}));
 }
