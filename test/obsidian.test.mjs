@@ -6,6 +6,8 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {knownVaults, planExtras, registryPaths, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
+import {normalizeSelection, selectedKinds} from '../lib/kinds.mjs';
+const chosen = (record = ['tactical-direction', 'challenges']) => selectedKinds(normalizeSelection({record}));
 
 const cli = fileURLToPath(new URL('../bin/install.mjs', import.meta.url));
 async function tmp(t) { const p = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'ant-vault-'))); t.after(() => fs.rm(p, {recursive: true, force: true})); return p; }
@@ -30,16 +32,23 @@ test('vault root is found from a notes folder that does not exist yet', async t 
 });
 
 test('extras enable the snippet, keep existing settings, and never overwrite user edits', async t => {
-  const v = await vault(t), notes = path.join(v, 'Tactical Direction');
+  const v = await vault(t), notes = path.join(v, 'Agent Notes');
   await fs.writeFile(path.join(v, '.obsidian/appearance.json'), JSON.stringify({theme: 'moonstone', enabledCssSnippets: ['mine']}));
-  await writeExtras(await planExtras(v, notes));
+  await writeExtras(await planExtras(v, notes, chosen()));
   const appearance = JSON.parse(await fs.readFile(path.join(v, '.obsidian/appearance.json'), 'utf8'));
   assert.deepEqual(appearance, {theme: 'moonstone', enabledCssSnippets: ['mine', 'tactical-direction']});
-  assert.match(await fs.readFile(path.join(notes, 'Tactical Direction.base'), 'utf8'), /file\.hasTag\("tactical-direction"\)/);
-  assert.ok((await planExtras(v, notes)).every(s => s.action === 'current'));
+  const base = await fs.readFile(path.join(notes, 'Agent Notes.base'), 'utf8');
+  assert.match(base, /file\.hasTag\("tactical-direction"\)/);
+  assert.match(base, /name: "Challenges & fixes"/);
+  assert.match(base, /note\.status == "workaround"/);
+  assert.ok((await planExtras(v, notes, chosen())).every(s => s.action === 'current'));
+  // a new choice of kinds updates the managed dashboard, but never one the user edited
+  assert.equal((await planExtras(v, notes, chosen(['pivots'])))[2].action, 'update');
+  await fs.writeFile(path.join(notes, 'Agent Notes.base'), 'filters: mine\n');
+  assert.equal((await planExtras(v, notes, chosen(['pivots'])))[2].action, 'keep (edited by you)');
   const css = path.join(v, '.obsidian/snippets/tactical-direction.css');
   await fs.writeFile(css, '/* my own */');
-  assert.equal((await planExtras(v, notes))[0].action, 'keep (edited by you)');
+  assert.equal((await planExtras(v, notes, chosen()))[0].action, 'keep (edited by you)');
 });
 
 test('--obsidian-extras installs into the notes vault without prompting', async t => {
@@ -47,12 +56,12 @@ test('--obsidian-extras installs into the notes vault without prompting', async 
   const r = spawnSync(process.execPath, [cli, '--project', project, '--notes-dir', path.join(v, 'TD'), '--obsidian-extras'], {encoding: 'utf8'});
   assert.equal(r.status, 0, r.stderr);
   await fs.access(path.join(v, '.obsidian/snippets/tactical-direction.css'));
-  await fs.access(path.join(v, 'TD/Tactical Direction.base'));
+  await fs.access(path.join(v, 'TD/Agent Notes.base'));
 });
 
 test('non-interactive runs never prompt and keep the old output', async t => {
   const project = await tmp(t);
   const r = spawnSync(process.execPath, [cli, '--project', project], {encoding: 'utf8', input: ''});
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nTactical notes: Tactical Direction\n$/);
+  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\n$/);
 });

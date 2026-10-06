@@ -1,81 +1,67 @@
-## Tactical direction and disagreements
+## Agent notes
 
-Always record any user disagreement or tactical direction in `{{notes_dir}}` at project scope.
-Record the actual exchange and the final agreement, and update the note as the agreement evolves.
-Do not silently replace the user's direction with an agent's preferred policy.
-These notes are read later by the user in Obsidian and by future agents deciding how to act, so write them to be scanned: the binding rule first, the evidence below it.
+Record the moments listed under "Record" as notes in `{{notes_dir}}` at project scope, each kind in its own folder.
+These notes are read later by the user in Obsidian and by future agents deciding how to act, so write them to be scanned: the binding point first, the evidence below it.
+The user chose what to record and what to leave out; record only what "Record" asks for, and when a moment also matches "Do not record", leave it out.
+When a topic already has a note, update that note instead of starting another.
 
-### Filename and sections
+### Record
+
+{{record_list}}
+
+### Do not record
+
+{{skip_list}}
+- Secrets, always: never persist them; write `[REDACTED: <kind>]` in their place.
+
+{{kind_sections}}
+
+### Filenames
 
 - Filename: `[Category]-[Sub-category]-[Sub-sub-category].md`, for example `proxy-session-stateHandling.md`. The user's explicit naming convention takes precedence over generic filename style rules for these notes.
-- Required sections, in order: `## 1. Context`, `## 2. Agent Proposal`, `## 3. User Disagreement`, `## 4. Reconciliation`, `## 5. Final agreement`.
-- If direction was given without a proposal or disagreement, say so in those sections; do not invent an exchange. If agreement is still pending, record that explicitly.
-
-### Verbatim exchange
-
-- Preserve verbatim copies of the relevant user responses and agent responses in fenced `text` code blocks, each with an explicit User or Agent label, in chronological order. Keep the quoted exchange alongside the summary and reconciliation; do not substitute paraphrases for the copies.
-- Put the exchange under `### Exchange (verbatim)` at the end of `3. User Disagreement`. Wrap each message in a `quote` callout whose metadata names the speaker, with the fence inside it. Every line of a callout, including blank lines, starts with `>`. Fold agent messages longer than about 15 lines with `-`; keep user messages open, because they are the direction.
-- When a message itself contains backticks, make the fence longer than the longest backtick run inside it (four backticks when the message contains three), so the quote cannot close early.
-- Explicitly redact secrets as `[REDACTED: <kind>]` rather than persisting them.
+- Each kind's section lists its required sections, in order. When a section has nothing to say, say so in one line; do not invent content to fill it.
 
 ### Note layout
 
-Use only core Obsidian features, so the note reads well with no plugins installed, and let them carry structure and color:
+Use only core Obsidian features, so a note reads well with no plugins installed, and let them carry structure and color:
 
 ````markdown
 ---
-status: agreed
+status: resolved
 created: 2026-10-05
 updated: 2026-10-05
-tags: [tactical-direction, queue/retry]
-aliases: ["Retry failed jobs with a fixed delay"]
+tags: [challenge, queue/retry]
+aliases: ["Retries pile up because the lock outlives the worker"]
 implementation:
-cssclasses: [tactical-direction]
+cssclasses: [agent-note]
 ---
 
-# Retry failed jobs with a fixed delay
+# Retries pile up because the lock outlives the worker
 
-> [!success|banner] Agreed 2026-10-05
-> Retry failed jobs every 30 seconds, at most 5 times; do not use exponential backoff.
+> [!success|banner] Resolved 2026-10-05
+> The job lock now expires with the worker's lease, so a crashed worker no longer blocks its retries.
 
-## 1. Context
-## 2. Agent Proposal
-> [!abstract] Proposed
-## 3. User Disagreement
-> [!warning] User direction
-### Exchange (verbatim)
-> [!quote|user] User · 2026-10-05
-> ```text
-> ...
-> ```
-
-> [!quote|agent]- Agent · 2026-10-05
-> ```text
-> ...
-> ```
-## 4. Reconciliation
-## 5. Final agreement
-> [!success] Agreed rules
-> 1. ...
-### Implementation
+## 1. Symptom
+...
 ````
 
-- Properties: keep exactly these, because they sit above the banner and every extra row pushes it down. `status` is `agreed`, `pending`, or `superseded`; keep `updated` current; `tags` holds `tactical-direction` plus a nested `category/subcategory` tag (the tag is what dashboards query); `implementation` holds the summary link once it exists.
-- Title: a sentence-case decision statement a person would search for, not the filename. Repeat it in `aliases`, double-quoted, since an unquoted comma splits it into several aliases.
-- Banner: the first block after the title is a callout with `|banner` metadata that states the binding rule in one or two sentences. Its type carries the status color: `success` for agreed, `question` for pending (say what is undecided and who decides), `failure` for superseded (link the newer note).
-- Callout colors carry meaning, so use each type only for its role: `abstract` for the agent's proposal, `warning` for what the user changed or rejected, `success` for the agreed rules, `todo` for open follow-ups, `quote` for verbatim messages. Keep the rest as plain prose, tables, and lists; a note where everything is a callout has no emphasis.
-- Use a table in `4. Reconciliation` when several points changed (proposed, changed to, why). Use a `mermaid` diagram only when the agreement is a flow or state machine, and keep it small enough to read at page width (about eight nodes).
-- Link with `[[wikilinks]]` to related tactical-direction notes and other notes in the same vault; use Markdown links with angle-bracketed paths for files outside it. Mark code paths and identifiers with inline code.
+- Properties: keep exactly these, because they sit above the banner and every extra row pushes it down. `status` uses the kind's own vocabulary (listed in its section); keep `updated` current; `tags` holds the kind's tag plus a nested `category/subcategory` tag (the tags are what dashboards query); `implementation` holds the summary link once it exists.
+- Title: a sentence-case statement a person would search for, not the filename. Repeat it in `aliases`, double-quoted, since an unquoted comma splits it into several aliases.
+- Banner: the first block after the title is a callout with `|banner` metadata that states the note's point in one or two sentences. Its type carries the status color, as each kind's section says.
+- Callout colors carry meaning, so use each type only for its role: `abstract` for a proposal or the approach before a change, `warning` for what the user changed or rejected and for caveats, `success` for agreed rules and what now holds, `failure` for what was abandoned, `todo` for open follow-ups, `quote` for verbatim messages. Keep the rest as plain prose, tables, and lists; a note where everything is a callout has no emphasis.
+- Use a table when several points are compared (options, attempts, proposed vs. changed). Use a `mermaid` diagram only when the content is a flow or state machine, and keep it small enough to read at page width (about eight nodes).
+- Link with `[[wikilinks]]` to related notes of any kind (a pivot to the dead end that caused it, a challenge to the decision it forced) and other notes in the same vault; use Markdown links with angle-bracketed paths for files outside it. Mark code paths and identifiers with inline code.
+- Quote the user verbatim, in a `quote` callout labelled User with the message in a fenced `text` block, whenever their words triggered or decided what the note records. When a message itself contains backticks, make the fence longer than the longest backtick run inside it.
 
 ### Writing
 
-- Write so a future agent can act on the note without reading the exchange: present tense, short sentences, one idea per bullet, the user's own terms for project concepts.
+- Write so a future agent can act on the note without reading the conversation: present tense, short sentences, one idea per bullet, the user's own terms for project concepts.
 - Write prose in the language the user writes in; keep the required section headings as given.
-- Number the agreed rules in `5. Final agreement` and make each one testable.
 - Distinguish user requirements and operating assumptions from measured observations, implementation status, and validation evidence; label each where it could be confused.
+- Never claim something is implemented or verified before it has happened.
 
 ### Implementation backlink
 
-- Once the related changes finish implementing, always add a backlink to the saved `$implementation-summary` artifact under `### Implementation` and in the `implementation` property. Prefer a durable Markdown summary link; also link its HTML companion when available. A transient review-session URL alone is insufficient.
-- Keep the note's implementation status, banner, `status`, `updated`, and summary links current when follow-up work changes the result. When a later agreement replaces this one, mark it `superseded` and link both notes. Never claim implementation or verification before it has happened.
+- Once the related changes finish implementing, always add a backlink to the saved `$implementation-summary` artifact under a `### Implementation` heading at the end of the note and in the `implementation` property. Prefer a durable Markdown summary link; also link its HTML companion when available. A transient review-session URL alone is insufficient.
+- Keep the note's status, banner, `updated`, and summary links current when follow-up work changes the result. When a later note replaces this one, mark this one `superseded` and link both ways.
 - Preserve existing project instructions, unrelated notes, and secrets. Follow the project's index and documentation maintenance rules when creating or updating notes.
