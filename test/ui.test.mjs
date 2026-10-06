@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {browsePrompt, completePath, confirmPrompt, displayPath, fit, inputPrompt, parseKeys, selectPrompt, visibleLength} from '../lib/ui.mjs';
+import {browsePrompt, checklistPrompt, completePath, confirmPrompt, displayPath, fit, inputPrompt, parseKeys, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
 const press = (prompt, ...keys) => keys.reduce((s, k) => prompt.key(s, typeof k === 'string' ? {name: 'char', ch: k} : k), prompt.init());
 const k = name => ({name});
@@ -96,4 +96,18 @@ test('tab completion completes a unique folder and stops at a shared prefix', as
   assert.equal(completePath(root + '/Pro'), root + '/Projects/');
   assert.equal(completePath(root + '/No'), root + '/Note');
   assert.equal(completePath(root + '/zzz'), root + '/zzz');
+});
+
+test('checklist ticks with space, keeps option order, enforces a minimum, and offers an add row', () => {
+  const p = checklistPrompt({title: 'Record', min: 1, add: 'Add your own…', options: [
+    {label: 'A', value: 'a', checked: true}, {label: 'B', value: 'b'}, {label: 'C', value: 'c'}]});
+  assert.deepEqual(press(p, k('down'), k('down'), ' ', k('up'), ' ', k('enter')).done, {checked: ['a', 'b', 'c']});
+  assert.equal(press(p, ' ', k('enter')).error, 'tick at least 1 with space');
+  const add = press(p, k('end'), ' ', k('enter'));
+  assert.deepEqual(add.done, {add: true, checked: ['a']}, 'space on the add row ticks nothing');
+  assert.equal(p.transient(add), true);
+  assert.match(p.summary(press(p, k('down'), ' ', k('enter')))(80), /Record.*A, B/);
+  for (const width of [40, 79]) for (const line of p.view(p.init(), width)) assert.ok(visibleLength(line) <= width, line);
+  const long = checklistPrompt({title: 'T', options: ['alpha', 'bravo', 'charlie', 'delta'].map(v => ({label: v, value: v, checked: true}))});
+  assert.match(long.summary(press(long, k('enter')))(22), /alpha, \+3 more$/, 'a long summary drops whole labels, never cuts one');
 });
