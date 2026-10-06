@@ -261,7 +261,7 @@ async function chooseExtras(state) {
   const room = Math.max(24, (process.stdout.columns || 80) - 36);
   const rel = p => displayPath(path.relative(vault, p), room);
   state.extras = await run(confirmPrompt({title: `Add styling and a dashboard to vault “${path.basename(vault)}”?`, detail: [
-    c.dim('Colored status banners, chat-style quotes, and a dashboard of every note by kind.'),
+    c.dim('Status banners, chat-style quotes, and a dashboard of every note.'),
     ...pending.map(s => `${c.accent(s.action === 'create' ? '+' : '~')} ${rel(s.path)}  ${c.dim(s.label)}`),
   ]}));
 }

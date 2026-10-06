@@ -43,7 +43,7 @@ The installer writes text; the agent does the recording.
 ## Requirements
 
 - Node.js 18 or newer.
-- Git with access to this repository (it is private; Git handles the credentials, the installer never sees them).
+- Git, which `npx` uses to fetch this repository from GitHub.
 - An agent that reads `AGENTS.md`.
 Claude Code reads `CLAUDE.md` instead: make `AGENTS.md` a symlink to `CLAUDE.md` (`ln -s CLAUDE.md AGENTS.md`) before installing, or add the line `@AGENTS.md` to `CLAUDE.md`.
 The installer follows a symlink as long as it stays inside the project.
@@ -87,7 +87,7 @@ The project is where `AGENTS.md` lives.
 
 ### 3. Choose the notes folder
 
-![The notes folder menu, offering the project default, an Obsidian vault found on this machine, Browse and Type a path](docs/images/wizard-notes-folder.png)
+![The notes folder menu, offering ./Agent Notes in the project, an Obsidian vault found on this machine, Browse and Type a path](docs/images/wizard-notes-folder.png)
 
 | Option | When to use it |
 |---|---|
@@ -102,7 +102,7 @@ A folder outside the project is recorded as an absolute path.
 
 ### 4. Browse to the folder
 
-![The folder browser inside a vault, with "Use this folder", "New folder here" and the Tactical Direction subfolder](docs/images/wizard-browse.png)
+![The folder browser at a project folder inside a vault, with "Use this folder", "New folder here" and a Meetings subfolder](docs/images/wizard-browse.png)
 
 The browser shows the current folder at the top, then two actions, then the subfolders.
 
@@ -126,6 +126,8 @@ Hidden folders, `node_modules` and `__pycache__` are not listed.
 
 ### 5. Choose what to record
 
+![The Record checklist: Pivots, Challenges & fixes, Decisions & tradeoffs and a custom "Perf wins" kind ticked, the other kinds unticked, and "Add your own kind…" at the bottom](docs/images/wizard-record.png)
+
 A checklist of note kinds, one per line with a short hint.
 Tick with `Space` and confirm with `Enter`; at least one kind is required.
 **Pivots** and **Challenges & fixes** start ticked; on a re-run, the list starts from your last choice.
@@ -135,6 +137,8 @@ To record something the list does not cover, choose **+ Add your own kind…**, 
 It joins the list ticked, gets its own folder named after it, and agents follow your sentence as its definition.
 
 ### 6. Choose what never to record
+
+![The Never record checklist: the four default exclusions and a custom "anything about the CI provider" rule ticked, brainstorming and repo facts unticked](docs/images/wizard-never-record.png)
 
 The same kind of checklist, for moments agents must leave out even when they fit a kind you chose.
 The first four start ticked:
@@ -153,7 +157,7 @@ Secrets are always redacted, whatever you tick.
 
 ### 7. Decide on styling
 
-![The styling step, listing the snippet, the appearance setting and the dashboard file it will add](docs/images/wizard-styling.png)
+![The styling step, listing the snippet, the appearance setting and the Agent Notes.base dashboard it will add](docs/images/wizard-styling.png)
 
 If the notes folder is inside an Obsidian vault, the wizard offers to add a styling snippet and a dashboard, and lists every file it would add (`+`) or change (`~`).
 See [Obsidian styling and dashboard](#obsidian-styling-and-dashboard) for what they do.
@@ -161,13 +165,15 @@ Choose **No** to keep the vault untouched; notes still render with stock Obsidia
 
 ### 8. Confirm
 
+![The Install? screen: the instructions file, the notes folder, the four kinds to record with their folders, and the five exclusions wrapped over two lines](docs/images/wizard-confirm.png)
+
 The last screen shows the instructions file, whether the block will be created, added or updated, the notes folder, the kinds to record with their folders, and what will never be recorded.
 Nothing is written before you choose **Yes**.
 `Esc` goes back a step at a time, keeping what you ticked.
 
 ### 9. Done
 
-![The finished install, listing every file written and the same install as a command without prompts](docs/images/wizard-done.png)
+![The finished install, listing every file written and the same install as a command, with --record, --add-kind, --skip and --add-skip flags](docs/images/wizard-done.png)
 
 The wizard lists every file it wrote and prints the same install as a command, with your kinds and exclusions as flags, that you can paste into a script, a README or another machine.
 Paths under your home folder print as `"$HOME/…"` so the command works for teammates too.
@@ -353,7 +359,7 @@ If you added the styling, also delete `.obsidian/snippets/tactical-direction.css
 
 | Symptom | Fix |
 |---|---|
-| `npx` cannot fetch the package | The repository is private. Check that `git ls-remote https://github.com/andyqioe/auto-note-taker` works for your account. |
+| `npx` cannot fetch the package | Check that `git ls-remote https://github.com/andyqioe/auto-note-taker` works from this machine (network, proxy or Git credentials). |
 | The wizard did not start | It only runs in a terminal with a path missing. Without a terminal, or with `--yes`, `--check` or both paths, it installs directly. |
 | A vault is missing from the list | The wizard lists vaults Obsidian has opened on this machine, five at most. Choose **Browse…** or **Type a path…** instead. |
 | The note looks plain in Obsidian | Check that the snippet is enabled in **Settings → Appearance → CSS snippets**, and that the note has `cssclasses: [agent-note]`. Reopen the vault if you installed while Obsidian was running. |
@@ -368,6 +374,7 @@ If you added the styling, also delete `.obsidian/snippets/tactical-direction.css
 
 ```text
 bin/install.mjs                      command-line flags and the wizard
+docs/make-screenshots.py             regenerates the wizard screenshots
 lib/install.mjs                      renders, plans and writes the managed block, and reads back its saved choice
 lib/kinds.mjs                        the note kinds and exclusions, and selection validation
 lib/obsidian.mjs                     vault discovery, snippet, and the dashboard generated from the chosen kinds
@@ -387,6 +394,16 @@ npm test
 ```
 
 Each prompt in `lib/ui.mjs` is a pure state machine (an initial state, a key handler and a render), so the tests drive it without a terminal.
+
+The wizard screenshots in `docs/images/wizard-*.png` are generated from the real wizard, so they never drift from it.
+After changing a screen, regenerate them (needs Google Chrome and `pip install pyte`):
+
+```sh
+python3 docs/make-screenshots.py
+```
+
+It runs the wizard in a pseudo-terminal against a staged `~/code/storefront` project and `~/Documents/Notes` vault in a temporary folder, and captures each screen in the terminal frame at 2x.
+The `note-*.png` images are real Obsidian captures and are not generated.
 
 For a portable package, run `npm pack` and install the `.tgz` with `npx --package ./auto-note-taker-<version>.tgz auto-note-taker`.
 No npm registry release is published; installing from GitHub does not need one.
