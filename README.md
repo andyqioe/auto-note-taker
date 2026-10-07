@@ -22,6 +22,7 @@ The instructions are a plain prompt, not a skill or plugin, so any agent that re
 - [Install step by step](#install-step-by-step)
 - [Install without prompts](#install-without-prompts)
 - [Add or remove kinds later](#add-or-remove-kinds-later)
+- [Review the diff](#review-the-diff)
 - [What agents record](#what-agents-record)
 - [What a note looks like](#what-a-note-looks-like)
 - [Obsidian styling and dashboard](#obsidian-styling-and-dashboard)
@@ -172,9 +173,11 @@ Choose **No** to keep the vault untouched; notes still render with stock Obsidia
 
 ### 8. Confirm
 
-![The Install? screen: the instructions file, the notes folder, the four kinds to record with their folders, and the five exclusions wrapped over two lines](docs/images/wizard-confirm.png)
+![The Install? screen: the instructions file, the notes folder, the four kinds to record with their folders, the five exclusions wrapped over two lines, and the change to AGENTS.md as +126 lines](docs/images/wizard-confirm.png)
 
 The last screen shows the instructions file, whether the block will be created, added or updated, the notes folder, the kinds to record with their folders, and what will never be recorded.
+The **changes** row sizes the edit to `AGENTS.md` in lines added and removed.
+Press `d` to read the exact diff before deciding (see [Review the diff](#review-the-diff)).
 Nothing is written before you choose **Yes**.
 `Esc` goes back a step at a time, keeping what you ticked.
 
@@ -182,7 +185,7 @@ Nothing is written before you choose **Yes**.
 
 ![The finished install, listing every file written and the same install as a command, with --record, --add-kind, --skip and --add-skip flags](docs/images/wizard-done.png)
 
-The wizard lists every file it wrote and prints the same install as a command, with your kinds and exclusions as flags, that you can paste into a script, a README or another machine.
+The wizard lists every file it wrote, with the lines added and removed in `AGENTS.md`, and prints the same install as a command, with your kinds and exclusions as flags, that you can paste into a script, a README or another machine.
 Paths under your home folder print as `"$HOME/…"` so the command works for teammates too.
 
 ## Install without prompts
@@ -226,8 +229,12 @@ npx --yes github:andyqioe/auto-note-taker#COMMIT_SHA --project . --yes
 | `--no-obsidian-extras` | Never offer or install them. |
 | `--headless` | Let agents write notes without asking. By default the block tells agents to ask a Yes/No question before each note, and to write nothing when no one can answer. It is never remembered: pass it on every run that should stay headless, `--check` included. |
 | `--yes`, `-y` | Do not prompt; use defaults for anything not given. |
-| `--check` | Report whether the block is current, without writing. |
+| `--check` | Report whether the block is current, without writing; when it is not, print the diff an install would make. |
 | `--help`, `-h` | Print usage. |
+
+Each run that changes `AGENTS.md` prints the change as a unified diff after its summary, so a log shows exactly what was written.
+A run that changes nothing prints no diff.
+On a terminal the diff is colored; in a pipe or a CI log it is plain text.
 
 Exit codes: `0` on success (and for `--check` when the block is current), `1` on an error or an out-of-date `--check`, `130` when you quit the wizard with `Ctrl+C`.
 
@@ -285,7 +292,8 @@ Press `Esc` on any question to go back to the checklist without adding it.
 
 ![The confirmation: To-dos will be added with its folder and sections, followed by the full list of kinds that will be recorded, and Yes selected](docs/images/wizard-update.png)
 
-The last screen lists what changes: each kind to **add** with its folder and sections, each kind to **remove**, and the full list you will **record** afterwards.
+The last screen lists what changes: each kind to **add** with its folder and sections, each kind to **remove**, the full list you will **record** afterwards, and the size of the edit to `AGENTS.md`.
+Press `d` to read the exact diff first (see [Review the diff](#review-the-diff)).
 Choose **Yes** to write it, or **No** to leave everything as it was.
 If nothing changed, the wizard says so and writes nothing.
 
@@ -293,7 +301,7 @@ If nothing changed, the wizard says so and writes nothing.
 
 ![The finished update: the AGENTS.md block and the Obsidian dashboard updated, and the same update printed as one command](docs/images/wizard-update-done.png)
 
-The wizard updates the block in `AGENTS.md`.
+The wizard updates the block in `AGENTS.md` and shows how many lines it added and removed.
 If the notes folder has the Obsidian dashboard, it updates that too, so each new kind gets its own view.
 It finishes by printing the same update as a command, which you can save or rerun in another project.
 
@@ -319,12 +327,48 @@ npx --yes github:andyqioe/auto-note-taker update \
 npx --yes github:andyqioe/auto-note-taker update --remove-kind pivots
 ```
 
-`update` prints what it did:
+`update` prints what it did, then the diff of `AGENTS.md`:
 
 ```text
 Updated: /Users/you/code/storefront/AGENTS.md
 Added: To-dos (Agent Notes/To-dos)
 Recording: Pivots, Challenges & fixes, To-dos
+```
+
+```diff
+--- AGENTS.md
++++ AGENTS.md
+@@ -1,5 +1,5 @@
+ <!-- BEGIN tactical-direction-context -->
+-<!-- auto-note-taker: {"notesDir":"Agent Notes","record":["pivots","challenges"],"skip":["routine","trivial-fixes","agent-mechanics","personal"],"customKinds":[],"customSkips":[],"folders":{}} -->
++<!-- auto-note-taker: {"notesDir":"Agent Notes","record":["pivots","challenges"],"skip":["routine","trivial-fixes","agent-mechanics","personal"],"customKinds":[{"name":"To-dos","when":"the user says \"add X to todo\"","sections":["Task","Context","Done when","Links"]}],"customSkips":[],"folders":{}} -->
+ ## Agent notes
+ 
+ Record the moments listed under "Record" as notes in `Agent Notes` at project scope, each kind in its own folder.
+@@ -19,6 +19,7 @@
+ 
+ - **Pivots** (`Agent Notes/Pivots`): Each time the approach of record changes partway through the work.
+ - **Challenges & fixes** (`Agent Notes/Challenges`): A problem that took real effort to solve, with why the fix works.
++- **To-dos** (`Agent Notes/To-dos`): The user says "add X to todo".
+ 
+ ### Do not record
+ 
+@@ -49,6 +50,15 @@
+ - Status and banner: `resolved` (`success`, states the cause and the fix in one or two sentences), `workaround` (`warning`, says what the real fix would be and why it was not done), `open` (`question`, says what blocks it).
+ - When the problem made the work change course, also record the pivot (if pivots are recorded) and link both notes.
+ 
++### To-dos
++
++Record a "To-dos" note in `Agent Notes/To-dos` when: the user says "add X to todo"
++The user defined this kind in their own words; follow that definition as written and do not stretch it to cover moments the other kinds already handle.
++
++- Tag: `to-dos`.
++- Sections, in order: `## 1. Task`, `## 2. Context`, `## 3. Done when`, `## 4. Links`.
++- Status and banner: `current` (`info`, states the point of the note in one or two sentences), `superseded` (`failure`, links the newer note).
++
+ ### Filenames
+ 
+ - Filename: `[Category]-[Sub-category]-[Sub-sub-category].md`, for example `proxy-session-stateHandling.md`. The user's explicit naming convention takes precedence over generic filename style rules for these notes.
 ```
 
 Running the same command again prints `Already current:` and changes nothing.
@@ -362,6 +406,29 @@ npx --yes github:andyqioe/auto-note-taker update \
   --remove-kind 'To-dos - create a summary page listing every to-do' \
   --add-kind 'To-dos=the user says "add X to todo"' \
   --kind-details 'keep To-dos/To-dos.md as a summary page listing every to-do with its status and a link to its note'
+```
+
+## Review the diff
+
+Every run shows what it changes in `AGENTS.md` (or the file it links to, such as `CLAUDE.md`), so nothing lands in your instructions unseen.
+
+**In the wizards.** The confirm screen of the install and of `update` has a **changes** row with the lines added and removed.
+Press `d` there to open the diff:
+
+![The diff review for an update: the new To-dos section shown in green as one block, between unchanged lines, with the scroll keys at the bottom](docs/images/wizard-review.png)
+
+Added lines are green and removed lines red, with three unchanged lines around each change and an `@@` line saying where it is.
+Long lines wrap rather than being cut off, so a change at the end of a line stays visible.
+Scroll with `↑` and `↓`, page with `Space` and `b`, and press `Enter` (or `Esc`) to go back to the question.
+Nothing is written until you answer **Yes**.
+
+**Without prompts.** The installer and `update` print the same diff after their summary, as in the [example above](#update-without-prompts).
+
+**Before running.** `--check` prints the diff an install would make, without writing anything.
+Pass the flags you plan to use to preview their effect:
+
+```sh
+npx --yes github:andyqioe/auto-note-taker --project . --check --record decisions,gotchas
 ```
 
 ## What agents record
@@ -495,6 +562,7 @@ Tick more kinds to add them: each new kind gets a subfolder of the existing note
 The old `Tactical Direction.base` dashboard is left as it was; the new one is `Agent Notes.base`.
 
 **Check.** `--check` exits `0` when the block matches this version and `1` when it is missing or out of date, without writing anything.
+When it is out of date, it also prints the diff an install would make.
 Use it in CI to catch projects that need a refresh:
 
 ```sh
@@ -530,6 +598,7 @@ docs/make-screenshots.py             regenerates the wizard screenshots
 docs/make-note-screenshots.mjs       regenerates the Obsidian note screenshots from docs/demo-notes/
 docs/demo-notes/                     the sample notes those screenshots show
 lib/install.mjs                      renders, plans and writes the managed block, and reads back its saved choice
+lib/diff.mjs                         the line diff every run shows of AGENTS.md
 lib/kinds.mjs                        the note kinds and exclusions, and selection validation
 lib/obsidian.mjs                     vault discovery, snippet, and the dashboard generated from the chosen kinds
 lib/ui.mjs                           dependency-free terminal prompts, including the checklist

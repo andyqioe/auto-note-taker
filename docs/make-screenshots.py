@@ -13,7 +13,7 @@ import pyte
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "docs/images"
-HERE = Path(tempfile.mkdtemp(prefix="ant-shots-")).resolve()  # macOS: /var is /private/var, and the project path must sit under HOME
+HERE = Path(tempfile.mkdtemp(prefix="ant-", dir="/tmp")).resolve()  # short, so paths in the review diff stay readable; resolved, since macOS /tmp is /private/tmp and the project must sit under HOME
 OUT.mkdir(parents=True, exist_ok=True)
 COLS, ROWS = 84, 40
 CHROME = os.environ.get("CHROME") or next((c for c in ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", shutil.which("google-chrome") or "", shutil.which("chromium") or ""] if c and Path(c).exists()), "google-chrome")
@@ -181,6 +181,9 @@ send("enter")
 send(*"keep To-dos/To-dos.md as a summary page linking every to-do"); send("enter")
 send("enter")
 shoot("wizard-update", "npx auto-note-taker update")
+send("d", "end")                                # review the AGENTS.md diff at the new kind's section, then back
+shoot("wizard-review", "npx auto-note-taker update")
+send("enter")
 send("enter")
 pump(1.0)
 shoot("wizard-update-done", "npx auto-note-taker update")

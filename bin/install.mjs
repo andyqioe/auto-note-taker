@@ -5,7 +5,8 @@ import path from 'node:path';
 import {defaultNotesDir, expandHome, installedConfig, installedNotesDir, notesDirFor, planInstall, readProject, resolveNotesDir, validateNotesDir, writeInstall} from '../lib/install.mjs';
 import {defaultCustomSections, defaultRecord, defaultSkip, exclusions, folderFor, kindById, kinds, maxDetails, normalizeSelection, parseSections, selectedKinds, validateSections, validateText} from '../lib/kinds.mjs';
 import {baseName, knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
-import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, run, selectPrompt} from '../lib/ui.mjs';
+import {colorDiffLine, diffStat, diffStyle, unifiedDiff} from '../lib/diff.mjs';
+import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, pagerPrompt, run, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
 const npx = 'npx --yes github:andyqioe/auto-note-taker';
 const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--record KINDS] [--skip ITEMS] [--add-kind KIND]...
@@ -14,7 +15,8 @@ const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--rec
                        [--remove-kind KIND]... [--yes]
 
 Installs or updates one managed block in AGENTS.md telling agents which moments to record as Obsidian notes,
-and which to leave out. Run in a terminal with no flags to choose everything interactively.
+and which to leave out, and prints the diff of what it changed. Run in a terminal with no flags to choose
+everything interactively; the confirm screen shows the same diff on d.
 
   --project PATH          project whose AGENTS.md receives the block (default: current directory)
   --notes-dir PATH        where notes go, one subfolder per kind; relative paths are inside the project
@@ -34,7 +36,8 @@ and which to leave out. Run in a terminal with no flags to choose everything int
   --headless              let agents write notes without asking; by default they ask a Yes/No question before each
                           note. Pass it on every run that should stay headless, --check included
   --yes, -y               do not prompt; use defaults for anything not given
-  --check                 report whether the block is current, without writing
+  --check                 report whether the block is current, and print the diff an install would make,
+                          without writing
 
 update changes only which kinds an existing install records, and keeps its notes folder, exclusions and
 headless setting. In a terminal with no kinds named, it asks which to add or remove.
@@ -123,17 +126,47 @@ const printCommand = (out, title, parts) => {
   out(c.dim(parts.map((part, i) => `   ${i ? '  ' : ''}${part}`).join(' \\\n')));
 };
 
+/** What a plan changes in the instructions file, as a unified diff named after the file agents read. */
+const changesOf = plan => unifiedDiff(plan.prior, plan.next, {name: path.relative(plan.root, plan.target) || 'AGENTS.md'});
+/** Prints a plan's diff after a blank line; colored only on a terminal, so logs and pipes get plain text. */
+function printDiff(plan) {
+  const {lines} = changesOf(plan);
+  if (!lines.length) return;
+  console.log('\n' + lines.map(l => process.stdout.isTTY ? colorDiffLine(l) : l).join('\n'));
+}
+/** The confirm row that sizes the change, for example "changes  AGENTS.md  +12 −3 lines". */
+function changesRow(plan, key) {
+  const diff = changesOf(plan), name = path.relative(plan.root, plan.target) || 'AGENTS.md';
+  return `${c.dim(key)}  ${diff.lines.length ? `${name}  ${diffStat(diff)}` : c.dim('none')}`;
+}
+/**
+ * Asks `prompt` until it is answered Yes or No; `d` opens the plan's diff in a scrolling view and comes back here,
+ * so the change can be read in full before anything is written.
+ */
+async function confirmWithReview(plan, prompt) {
+  const diff = changesOf(plan);
+  const rows = Math.max(5, Math.min(30, (process.stdout.rows || 24) - 4));
+  for (;;) {
+    const answer = await run(confirmPrompt({...prompt, review: diff.lines.length ? 'show changes' : ''}));
+    if (answer !== 'review') return answer;
+    await run(pagerPrompt({title: `Changes to ${path.relative(plan.root, plan.target) || 'AGENTS.md'}`, lines: diff.lines, style: diffStyle, rows}));
+  }
+}
+
 async function direct() {
   const {prior} = await readProject(options.project ?? process.cwd());
   const installed = installedConfig(prior);
   const plan = await planInstall(options.project ?? process.cwd(), options['notes-dir'] ?? installed?.notesDir ?? defaultNotesDir, selectionFrom(installed?.selection), {headless});
   if (check) {
     console.log(plan.change === 'current' ? 'Context is current.' : 'Context is missing or out of date.');
+    printDiff(plan);
     process.exitCode = plan.change === 'current' ? 0 : 1;
     return;
   }
-  if (await writeInstall(plan)) console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
-  else console.log(`Already installed: ${plan.target}`);
+  if (await writeInstall(plan)) {
+    console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
+    printDiff(plan);
+  } else console.log(`Already installed: ${plan.target}`);
   if (extras) {
     const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
     if (!vault) console.log('Obsidian extras skipped: the notes folder is not inside an Obsidian vault.');
@@ -185,6 +218,7 @@ async function update() {
     ...added.map(k => `Added: ${k.label} (${folder(k)})`), ...changed.map(k => `Changed: ${k.label} (${folder(k)})`), ...removed.map(k => `Removed: ${k.label}`),
     `Recording: ${labels(plan.selection)}`].join('\n'));
   for (const s of await refreshDashboard(plan)) console.log(`Obsidian ${s.label}: update ${s.path}`);
+  printDiff(plan);
 }
 
 async function updateWizard() {
@@ -207,10 +241,11 @@ async function updateWizard() {
       const folder = k => displayPath(resolveNotesDir(plan.root, plan.notesDir) + '/' + k.folder, wide());
       const rows = (key, list) => list.flatMap((k, i) => [`${c.dim((i ? '' : key).padEnd(8))}  ${k.label}  ${c.dim('→ ' + folder(k))}`,
         ...(k.custom && (key !== 'remove') ? [`${' '.repeat(8)}  ${c.dim('sections ' + k.sections.join(', '))}`] : [])]);
-      const confirmed = await run(confirmPrompt({title: 'Update?', detail: [
+      const confirmed = await confirmWithReview(plan, {title: 'Update?', detail: [
         ...rows('add', added), ...rows('change', changed), ...removed.map((k, i) => `${c.dim((i ? '' : 'remove').padEnd(8))}  ${k.label}  ${c.dim('· its notes stay')}`),
         ...listWrap(selectedKinds(plan.selection).map(k => k.label), wide() + 10).map((line, i) => `${c.dim((i ? '' : 'record').padEnd(8))}  ${line}`),
-      ]}));
+        changesRow(plan, 'changes '),
+      ]});
       if (!confirmed) { out(c.dim('   Nothing changed.')); return; }
       break;
     } catch (e) { if (!(e instanceof Back)) throw e; process.stdout.write('\x1b[1A\r\x1b[J'); }
@@ -219,7 +254,8 @@ async function updateWizard() {
   const dashboard = await refreshDashboard(plan);
   out('');
   const room = text => Math.max(24, (process.stdout.columns || 80) - text.length - 6);
-  out(`${c.green(glyph.check)}  Updated block in ${displayPath(plan.target, room('Updated block in'))}`);
+  const stat = '  ' + diffStat(changesOf(plan));
+  out(`${c.green(glyph.check)}  Updated block in ${displayPath(plan.target, room('Updated block in') - visibleLength(stat))}${stat}`);
   for (const s of dashboard) out(`${c.green(glyph.check)}  Updated ${displayPath(s.path, room('Updated'))}`);
   out('');
   const {added, changed, removed} = kindChanges(installed.selection, plan.selection);
@@ -298,7 +334,8 @@ async function wizard() {
   out('');
   const verb = {create: 'Created', append: 'Added block to', update: 'Updated block in', current: 'Already current:'}[plan.change];
   const room = text => Math.max(24, (process.stdout.columns || 80) - text.length - 6);
-  out(`${c.green(glyph.check)}  ${verb} ${displayPath(plan.target, room(verb))}`);
+  const stat = plan.change === 'current' ? '' : '  ' + diffStat(changesOf(plan));
+  out(`${c.green(glyph.check)}  ${verb} ${displayPath(plan.target, room(verb) - visibleLength(stat))}${stat}`);
   for (const s of state.extras ? state.extraSteps ?? [] : []) if (s.action === 'create' || s.action === 'update')
     out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path, room('Created'))}`);
   const styled = state.extras && state.extraSteps?.some(s => s.path.endsWith('.css') && s.action !== 'current');
@@ -425,14 +462,15 @@ async function confirmInstall(state) {
   const chosen = selectedKinds(plan.selection);
   // Lists wrap between items, so no label is ever cut off; the key column stays aligned.
   const rows = (key, labels, separator = ', ') => listWrap(labels, wide() + 10, separator).map((line, i) => `${c.dim((i ? '' : key).padEnd(12))}  ${line}`);
-  state.confirmed = await run(confirmPrompt({title: 'Install?', detail: [
+  state.confirmed = await confirmWithReview(plan, {title: 'Install?', detail: [
     `${c.dim('instructions')}  ${displayPath(plan.target, wide())}  ${c.dim('· ' + what)}`,
     `${c.dim('notes       ')}  ${displayPath(notesAbsolute, wide())}${existsSync(notesAbsolute) ? '' : c.dim('  · new')}`,
     ...rows('record', chosen.map(k => k.label)),
     ...rows('folders', chosen.map(k => k.folder === '.' ? '(the notes folder)' : k.folder + '/'), '  '),
     `${c.dim('ask first   ')}  ${headless ? 'no, agents write notes without asking (--headless)' : 'yes, a Yes/No question before each note'}`,
     ...(skipped.length ? rows('never record', skipped) : [`${c.dim('never record')}  ${c.dim('nothing excluded')}`]),
-  ]}));
+    changesRow(plan, 'changes     '),
+  ]});
 }
 
 // Runs last, so every helper above is defined before a prompt can call it.

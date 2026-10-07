@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {browsePrompt, checklistPrompt, completePath, confirmPrompt, displayPath, fit, inputPrompt, parseKeys, selectPrompt, visibleLength} from '../lib/ui.mjs';
+import {browsePrompt, checklistPrompt, pagerPrompt, completePath, confirmPrompt, displayPath, fit, inputPrompt, parseKeys, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
 const press = (prompt, ...keys) => keys.reduce((s, k) => prompt.key(s, typeof k === 'string' ? {name: 'char', ch: k} : k), prompt.init());
 const k = name => ({name});
@@ -116,4 +116,32 @@ test('long input scrolls so the end being typed stays visible',()=>{
  const prompt=inputPrompt({title:'T'}),state=press(prompt,...'abcdefghijklmnopqrstuvwxyz');
  const last=prompt.view(state,14).at(-1);assert.ok(visibleLength(last)<=14);assert.ok(last.endsWith('…rstuvwxyz'),last);
  assert.ok(prompt.view(press(prompt,...'abc'),14).at(-1).endsWith('abc'));
+});
+
+test('confirm offers d to review only when asked, and review leaves no line behind',()=>{
+ const plain=confirmPrompt({title:'Install?'});assert.ok(!('done' in press(plain,'d')));
+ const review=confirmPrompt({title:'Install?',review:'show changes'}),state=press(review,'d');
+ assert.equal(state.done,'review');assert.ok(review.transient(state));assert.ok(review.view(review.init(),80).at(-1).includes('d show changes'));
+ assert.equal(press(review,'y').done,true);assert.ok(!review.transient(press(review,'y')));
+});
+test('the pager scrolls within its rows, pages, and closes on enter, esc or q',()=>{
+ const lines=Array.from({length:40},(_,i)=>`line ${i+1}`),pager=pagerPrompt({title:'Changes',lines,rows:10});
+ const view=s=>pager.view(s,60);
+ assert.equal(view(pager.init()).length,12);assert.ok(view(pager.init())[0].includes('rows 1–10 of 40'));
+ assert.ok(view(press(pager,k('down')))[1].includes('line 2'));
+ assert.ok(view(press(pager,' ',' ',' ',' '))[0].includes('rows 31–40 of 40'),'paging stops at the last screen');
+ assert.ok(view(press(pager,k('end'),'b'))[0].includes('rows 21–30'));
+ assert.equal(press(pager,k('up')).top,0);
+ for(const key of [k('enter'),k('escape'),'q']) assert.equal(press(pager,key).done,true);
+ assert.ok(pager.transient());
+ const short=pagerPrompt({title:'Changes',lines:['a','b'],rows:10});assert.ok(short.view(short.init(),60)[0].includes('2 lines'));
+ assert.ok(!short.view(short.init(),60).at(-1).includes('scroll'));
+});
+test('the pager wraps long lines instead of cutting them, styling every piece alike',()=>{
+ const green=s=>`\x1b[32m${s}\x1b[39m`,plain=s=>s.replace(/\x1b\[[0-9;]*m/g,'');
+ const long='+'+'x'.repeat(30)+'END',pager=pagerPrompt({title:'T',lines:[long,' short'],rows:10,style:l=>l.startsWith('+')?green:s=>s});
+ const body=pager.view(pager.init(),20).slice(1,-1);
+ assert.deepEqual(body.map(l=>plain(l).slice(3)),['+'+'x'.repeat(15),'x'.repeat(15)+'E','ND',' short']);
+ assert.ok(body.slice(0,3).every(l=>l.includes('\x1b[32m'))&&!body[3].includes('\x1b[32m'),'every piece of the long line is green');
+ assert.ok(body.every(l=>visibleLength(l)<=20));
 });

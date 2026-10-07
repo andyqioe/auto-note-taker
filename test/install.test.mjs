@@ -35,7 +35,7 @@ const block=async root=>(await fs.readFile(path.join(root,'AGENTS.md'),'utf8'));
 const section=(text,title)=>text.includes(`\n### ${title}\n`);
 test('a fresh install records pivots and challenges, each in its own folder, and leaves out the default exclusions',async t=>{
  const root=await project(t);const r=run(root);assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/Notes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n$/);
+ assert.match(r.stdout,/Notes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n\n--- \/dev\/null\n/);
  const text=await block(root);
  assert.ok(section(text,'Pivots')&&section(text,'Challenges and how they were overcome'));
  assert.ok(!section(text,'Tactical direction and disagreements')&&!section(text,'Decisions and tradeoffs'),'kinds not chosen are not rendered');
@@ -75,7 +75,7 @@ test('agents ask a Yes/No question before each note unless the install is explic
  const asking=await block(root);
  assert.ok(section(asking,'Ask before writing'));
  for(const want of ['explicit Yes/No selector','Write the note only on Yes','If no user can answer']) assert.ok(asking.includes(want),want);
- const r=run(root,'--headless');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/Ask before each note: no \(headless\)\n$/);
+ const r=run(root,'--headless');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/Ask before each note: no \(headless\)\n\n--- AGENTS\.md\n\+\+\+ AGENTS\.md\n/);assert.match(r.stdout,/^-### Ask before writing$/m);
  const headless=await block(root);
  assert.ok(!section(headless,'Ask before writing')&&!headless.includes('Yes/No'),'a headless install drops the question');
  assert.equal(run(root,'--check','--headless').status,0);
@@ -95,7 +95,7 @@ test('update adds a built-in kind and a kind of your own, with its sections and 
  const before=await block(root);
  const r=update(root,'--add-kind','gotchas','--add-kind','To-dos=the user says "add X to todo"','--kind-sections','Task, Done when, Links','--kind-details','also keep To-dos/index.md linking every open to-do');
  assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/Added: Gotchas & lessons \(Agent Notes\/Gotchas\)\nAdded: To-dos \(Agent Notes\/To-dos\)\nRecording: Decisions & tradeoffs, Gotchas & lessons, To-dos\n$/);
+ assert.match(r.stdout,/Added: Gotchas & lessons \(Agent Notes\/Gotchas\)\nAdded: To-dos \(Agent Notes\/To-dos\)\nRecording: Decisions & tradeoffs, Gotchas & lessons, To-dos\n\n--- AGENTS\.md\n/);assert.match(r.stdout,/^\+### To-dos$/m);
  const text=await block(root);
  for(const want of ['### Gotchas and lessons','### To-dos','`Agent Notes/To-dos` when: the user says "add X to todo"','`## 1. Task`, `## 2. Done when`, `## 3. Links`.','Also keep To-dos/index.md linking every open to-do.','- Anything about the CI provider','### Ask before writing']) assert.ok(text.includes(want),want);
  assert.ok(!text.includes('## 4. Follow-ups'),'custom sections replace the default ones');
@@ -139,4 +139,15 @@ test('the full installer accepts the new kind flags too',async t=>{
  assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/Recording: Pivots, Challenges & fixes, Dead ends, Perf wins/);
  assert.ok((await block(root)).includes('`## 1. Before`, `## 2. After`.'));
  assert.equal(run(root,'--remove-kind','pivots').status,1,'--remove-kind belongs to update');
+});
+
+test('every run shows its diff: --check previews it without writing, and a run that changes nothing shows none',async t=>{
+ const root=await project(t),p=path.join(root,'CLAUDE.md');await fs.writeFile(p,'# Rules\n');await fs.symlink('CLAUDE.md',path.join(root,'AGENTS.md'));
+ assert.equal(run(root).status,0);const installed=await fs.readFile(p,'utf8');
+ const preview=run(root,'--check','--record','decisions');assert.equal(preview.status,1);
+ assert.match(preview.stdout,/^Context is missing or out of date\.\n\n--- CLAUDE\.md\n\+\+\+ CLAUDE\.md\n@@ /,'the diff names the file agents read');
+ assert.match(preview.stdout,/^-- \*\*Pivots\*\*/m);assert.match(preview.stdout,/^\+- \*\*Decisions & tradeoffs\*\*/m);
+ assert.equal(await fs.readFile(p,'utf8'),installed,'--check writes nothing');
+ assert.equal(run(root,'--check').stdout,'Context is current.\n');
+ assert.equal(run(root).stdout,`Already installed: ${await fs.realpath(p)}\n`);
 });

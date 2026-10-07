@@ -64,9 +64,10 @@ test('--obsidian-extras installs into the notes vault without prompting', async 
   assert.deepEqual(JSON.parse(await fs.readFile(path.join(v, '.obsidian/types.json'), 'utf8')), {types: {created: 'datetime', updated: 'datetime'}});
 });
 
-test('non-interactive runs never prompt and keep the old output', async t => {
+test('non-interactive runs never prompt, keep the summary, and show the diff after it', async t => {
   const project = await tmp(t);
   const r = spawnSync(process.execPath, [cli, '--project', project], {encoding: 'utf8', input: ''});
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n$/);
+  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n\n--- \/dev\/null\n\+\+\+ AGENTS\.md\n@@ -0,0 \+1,\d+ @@\n\+<!-- BEGIN /);
+  assert.ok(!r.stdout.includes('\x1b['), 'piped output has no color codes');
 });
