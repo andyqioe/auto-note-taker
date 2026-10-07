@@ -111,3 +111,9 @@ test('checklist ticks with space, keeps option order, enforces a minimum, and of
   const long = checklistPrompt({title: 'T', options: ['alpha', 'bravo', 'charlie', 'delta'].map(v => ({label: v, value: v, checked: true}))});
   assert.match(long.summary(press(long, k('enter')))(22), /alpha, \+3 more$/, 'a long summary drops whole labels, never cuts one');
 });
+
+test('long input scrolls so the end being typed stays visible',()=>{
+ const prompt=inputPrompt({title:'T'}),state=press(prompt,...'abcdefghijklmnopqrstuvwxyz');
+ const last=prompt.view(state,14).at(-1);assert.ok(visibleLength(last)<=14);assert.ok(last.endsWith('…rstuvwxyz'),last);
+ assert.ok(prompt.view(press(prompt,...'abc'),14).at(-1).endsWith('abc'));
+});

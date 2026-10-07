@@ -21,6 +21,7 @@ The instructions are a plain prompt, not a skill or plugin, so any agent that re
 - [Quick start](#quick-start)
 - [Install step by step](#install-step-by-step)
 - [Install without prompts](#install-without-prompts)
+- [Add or remove kinds later](#add-or-remove-kinds-later)
 - [What agents record](#what-agents-record)
 - [What a note looks like](#what-a-note-looks-like)
 - [Obsidian styling and dashboard](#obsidian-styling-and-dashboard)
@@ -136,6 +137,8 @@ Tick with `Space` and confirm with `Enter`; at least one kind is required.
 See [What agents record](#what-agents-record) for what each kind captures.
 
 To record something the list does not cover, choose **+ Add your own kind…**, give it a name ("Perf wins") and finish the sentence "Record it when…" ("a change measurably sped something up").
+Then press `Enter` to keep the suggested sections (Context, What happened, Why it matters, Follow-ups) or type your own, comma-separated.
+Last, optionally say how agents should write these notes ("give p50 and p95 before and after"); press `Enter` to skip.
 It joins the list ticked, gets its own folder named after it, and agents follow your sentence as its definition.
 
 ### 6. Choose what never to record
@@ -212,7 +215,9 @@ npx --yes github:andyqioe/auto-note-taker#COMMIT_SHA --project . --yes
 | `--project PATH` | Project whose `AGENTS.md` receives the block. Default: the current directory. |
 | `--notes-dir PATH` | Where notes go, one subfolder per kind. Relative paths are inside the project. Default: the folder from the last install, else `Agent Notes`. Must be one line without backticks. |
 | `--record KINDS` | Comma-separated kinds to record: `tactical-direction`, `pivots`, `challenges`, `decisions`, `dead-ends`, `gotchas`, `open-questions`. Replaces the previous choice, including kinds you added. Default: the last choice, else `pivots,challenges`. |
-| `--add-kind "NAME=WHEN"` | Also record a kind of your own; repeat for several. On its own it extends the previous choice. |
+| `--add-kind KIND` | Also record one more kind: a built-in id (`--add-kind gotchas`) or one of your own as `"NAME=WHEN"`. Repeat for several. On its own it extends the previous choice; a kind of your own given a name it already has is redefined. |
+| `--kind-sections LIST` | The comma-separated sections of the kind of your own just added. Default: `Context, What happened, Why it matters, Follow-ups`. |
+| `--kind-details TEXT` | How agents should write the kind of your own just added, in your words, for example an index note to keep. It overrides that kind's layout, never your exclusions. |
 | `--skip ITEMS` | Comma-separated things never to record, or `none`: `routine`, `trivial-fixes`, `agent-mechanics`, `personal`, `brainstorm`, `restated-docs`. Default: the last choice, else the first four. |
 | `--add-skip TEXT` | Also never record this, in your words; repeat for several. |
 | `--obsidian-extras` | Also install the styling snippet and dashboard, if the notes folder is inside a vault. |
@@ -223,6 +228,51 @@ npx --yes github:andyqioe/auto-note-taker#COMMIT_SHA --project . --yes
 | `--help`, `-h` | Print usage. |
 
 Exit codes: `0` on success (and for `--check` when the block is current), `1` on an error or an out-of-date `--check`, `130` when you quit the wizard with `Ctrl+C`.
+
+## Add or remove kinds later
+
+`update` changes which kinds an existing install records and nothing else: the notes folder, your exclusions and the headless setting stay as they are.
+Run it from the project, in a terminal:
+
+```sh
+npx --yes github:andyqioe/auto-note-taker update
+```
+
+![The update wizard: the project and notes folder it keeps, the new Record choice, and a confirmation that adds a "To-dos" kind with its folder and sections](docs/images/wizard-update.png)
+
+It shows the Record checklist with your current kinds ticked.
+Tick a built-in kind to add it, untick one to stop recording it, or choose **+ Add your own kind…** and answer the same four questions as in the install (name, when, sections, how to write it).
+It then shows what will be added and removed, with each new kind's folder and sections, and asks before writing.
+When it is done, it prints the same update as a command.
+
+Without a terminal, or to script it, name the changes with flags:
+
+```sh
+# Add a built-in kind
+npx --yes github:andyqioe/auto-note-taker update --add-kind gotchas
+
+# Add a kind of your own, with its own sections and instructions
+npx --yes github:andyqioe/auto-note-taker update \
+  --add-kind 'To-dos=the user says "add X to todo"' \
+  --kind-sections 'Task, Context, Done when, Links' \
+  --kind-details 'keep To-dos/To-dos.md as a summary page listing every to-do with its status and a link to its note'
+
+# Stop recording a kind; its notes stay where they are
+npx --yes github:andyqioe/auto-note-taker update --remove-kind pivots
+```
+
+| Flag | Meaning |
+|---|---|
+| `--project PATH` | Project to update. Default: the current directory. It must already have the block. |
+| `--add-kind KIND` | Add a built-in kind by id, or one of your own as `"NAME=WHEN"`. Giving a kind of your own a name it already has replaces its definition, which is how you change one. |
+| `--kind-sections LIST` | Sections of the kind of your own just added, comma-separated; at most 10. |
+| `--kind-details TEXT` | How agents should write the kind of your own just added; one line, at most 600 characters. |
+| `--remove-kind KIND` | Stop recording a kind, by id (`pivots`) or name (`Perf wins`), in any case. |
+| `--yes`, `-y` | Do not prompt. |
+
+`update` prints each kind it added, changed or removed, and writes nothing when the install already matches.
+If the notes folder has the managed dashboard, it also updates the dashboard so each new kind gets its own view.
+Other flags, such as `--notes-dir` or `--skip`, belong to the full installer; `update` refuses them so it never changes more than you asked.
 
 ## What agents record
 
@@ -239,7 +289,7 @@ When a topic already has a note, the agent updates it instead of starting anothe
 | **Dead ends** | `Dead Ends/`, `dead-end` | An approach was tried for real and abandoned | Goal, Approach, Why it failed, Conditions, What replaced it |
 | **Gotchas & lessons** | `Gotchas/`, `gotcha` | A tool, library or this codebase behaved in a surprising way worth remembering | Gotcha, Example, Do instead, Source |
 | **Open questions & assumptions** | `Open Questions/`, `open-question` | Work goes ahead on an unconfirmed assumption, or a question only someone else can settle | Question, Current assumption, Why it matters, Who decides, Answer |
-| *Your own kind* | a folder named after it, a tag made from its name | Your "Record it when…" sentence | Context, What happened, Why it matters, Follow-ups |
+| *Your own kind* | a folder named after it, a tag made from its name | Your "Record it when…" sentence | Context, What happened, Why it matters, Follow-ups, or the sections you named |
 
 Notes link to each other where one led to another: a dead end to the pivot it caused, a challenge to the decision it forced.
 
@@ -346,7 +396,7 @@ It updates the dashboard only while its first line still reads `auto-note-taker:
 
 ## Update, check and uninstall
 
-**Update.** Run the installer again.
+**Update.** Run the installer again, or use [`update`](#add-or-remove-kinds-later) to add or remove kinds only.
 It replaces only its own block, so other text in `AGENTS.md` is untouched, and a run with nothing new to write changes no bytes.
 The block stores your choices on one line, so the wizard starts from them (**Keep current** for the folder, your ticks on both checklists) and a run without flags keeps them.
 
@@ -375,6 +425,8 @@ If you added the styling, also delete `.obsidian/snippets/tactical-direction.css
 | The note looks plain in Obsidian | Check that the snippet is enabled in **Settings → Appearance → CSS snippets**, and that the note has `cssclasses: [agent-note]`. Reopen the vault if you installed while Obsidian was running. |
 | The dashboard shows nothing | Bases needs Obsidian 1.9 or newer with the core Bases plugin on, and notes need their kind's tag (`pivot`, `challenge`, ...). |
 | An agent records something you excluded, or skips a kind you chose | Run the installer again and check both checklists; `--check` tells you whether the block is current. For your own kinds and rules, a more concrete sentence helps ("a change with before and after timings" rather than "performance stuff"). |
+| `has no auto-note-taker block to update` | `update` only changes an existing install. Run the installer first. |
+| `update only adds or removes kinds` | The flag changes something other than kinds. Run the installer without `update` instead. |
 | `unknown note kind` or `unknown exclusion` | A typo in `--record` or `--skip`. The error lists the valid names. |
 | `AGENTS.md points outside the project` | `AGENTS.md` is a symlink to another project. Install in the project that owns the file. |
 | `Malformed or duplicate managed block` | `AGENTS.md` has a `BEGIN` marker without its `END`, or two blocks. Fix the markers by hand; the installer changes nothing until then. |
@@ -383,7 +435,7 @@ If you added the styling, also delete `.obsidian/snippets/tactical-direction.css
 ## Development
 
 ```text
-bin/install.mjs                      command-line flags and the wizard
+bin/install.mjs                      command-line flags, the install wizard and the update command
 docs/make-screenshots.py             regenerates the wizard screenshots
 docs/make-note-screenshots.mjs       regenerates the Obsidian note screenshots from docs/demo-notes/
 docs/demo-notes/                     the sample notes those screenshots show

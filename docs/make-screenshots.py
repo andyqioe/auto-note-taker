@@ -33,13 +33,23 @@ reg.mkdir(parents=True)
 
 screen = pyte.Screen(COLS, ROWS)
 stream = pyte.ByteStream(screen)
-pid, fd = pty.fork()
-if pid == 0:
-    os.chdir(proj)
-    os.environ.update(HOME=str(home), TERM="xterm-256color", COLORTERM="truecolor")
-    os.environ.pop("NO_COLOR", None)
-    os.execvp("node", ["node", str(REPO / "bin/install.mjs")])
-fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+pid = fd = None
+
+
+def start(*args):
+    """Runs the installer with `args` in the staged project, on a fresh screen."""
+    global pid, fd
+    screen.reset()
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.chdir(proj)
+        os.environ.update(HOME=str(home), TERM="xterm-256color", COLORTERM="truecolor")
+        os.environ.pop("NO_COLOR", None)
+        os.execvp("node", ["node", str(REPO / "bin/install.mjs"), *args])
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+
+
+start()
 
 
 def pump(t=0.5):
@@ -54,7 +64,7 @@ def pump(t=0.5):
             stream.feed(data.replace(b"\x1b[2m", b"\x1b[5m").replace(b"\x1b[22m", b"\x1b[22;25m"))
 
 
-KEYS = {"enter": b"\r", "down": b"\x1b[B", "up": b"\x1b[A", "home": b"\x1b[H", "end": b"\x1b[F", "space": b" "}
+KEYS = {"ctrl-u": b"\x15", "enter": b"\r", "down": b"\x1b[B", "up": b"\x1b[A", "home": b"\x1b[H", "end": b"\x1b[F", "space": b" "}
 
 
 def send(*keys):
@@ -116,15 +126,15 @@ html,body{{margin:0;background:#0b0b10}}
   font:400 12.5px/1 'JetBrains Mono',monospace;color:#8b8b96;letter-spacing:.2px}}
 .dots{{position:absolute;left:14px;top:11px;display:flex;gap:8px}}.dots i{{width:12px;height:12px;border-radius:50%;display:block}}
 .term{{padding:16px 20px 18px;font:400 13.4px/21.5px 'JetBrains Mono',monospace;white-space:pre;color:#e9e9ee;font-variant-ligatures:none}}
-</style></head><body><div class=bg id=shot><div class=win><div class=bar><div class=dots><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>~/code/storefront · npx auto-note-taker</div>
+</style></head><body><div class=bg id=shot><div class=win><div class=bar><div class=dots><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>~/code/storefront · {title}</div>
 <div class=term>{body}</div></div></div></body></html>"""
 
 
-def shoot(name):
+def shoot(name, title="npx auto-note-taker"):
     pump(0.6)
     lines = rows()
     page = HERE / f"{name}.html"
-    page.write_text(PAGE.format(body=to_html(lines)))
+    page.write_text(PAGE.format(body=to_html(lines), title=html.escape(title)))
     height = round(37 * 2 + 34 + 1 + 16 + 18 + 2 + 21.5 * len(lines))
     subprocess.run([CHROME, "--headless=new", "--hide-scrollbars", "--force-device-scale-factor=2", f"--window-size=786,{height}",
                     "--virtual-time-budget=4000", f"--screenshot={OUT / (name + '.png')}", page.as_uri()],
@@ -145,6 +155,8 @@ send("home", "enter")                           # ✓ Use this folder
 send("down", "down", "down", "space")           # tick Decisions & tradeoffs
 send("end", "enter"); send(*"Perf wins"); send("enter")
 send(*"a change measurably sped something up"); send("enter")
+send("enter")                                   # keep the suggested sections
+send("enter")                                   # no extra instructions
 shoot("wizard-record")
 send("enter")
 send("end", "enter"); send(*"anything about the CI provider"); send("enter")
@@ -156,5 +168,16 @@ shoot("wizard-confirm")
 send("enter")
 pump(1.0)
 shoot("wizard-done")
+os.waitpid(pid, 0)
+
+start("update")                                 # later: add a kind of your own to the same install
+pump(1.5)
+send("end", "enter"); send(*"To-dos"); send("enter")
+send(*'the user says "add X to todo"'); send("enter")
+send("ctrl-u"); send(*"Task, Context, Done when, Links"); send("enter")
+send(*"keep To-dos/To-dos.md as a summary page linking every to-do"); send("enter")
+send("enter")
+shoot("wizard-update", "npx auto-note-taker update")
+send("enter")
 os.waitpid(pid, 0)
 shutil.rmtree(HERE, ignore_errors=True)
