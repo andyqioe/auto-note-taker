@@ -1,6 +1,6 @@
 {
   "name": "auto-note-taker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Inject persistent tactical-direction recording rules into a project's AGENTS.md, with an interactive folder picker and Obsidian styling",
   "type": "module",
   "bin": {
