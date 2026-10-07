@@ -5,6 +5,8 @@ These notes are read later by the user in Obsidian and by future agents deciding
 The user chose what to record and what to leave out; record only what "Record" asks for, and when a moment also matches "Do not record", leave it out.
 When a topic already has a note, update that note instead of starting another.
 
+{{ask_section}}
+
 ### Record
 
 {{record_list}}
@@ -28,8 +30,8 @@ Use only core Obsidian features, so a note reads well with no plugins installed,
 ````markdown
 ---
 status: resolved
-created: 2026-10-05
-updated: 2026-10-05
+created: 2026-10-05T14:32:07
+updated: 2026-10-05T16:08:41
 tags: [challenge, queue/retry]
 aliases: ["Retries pile up because the lock outlives the worker"]
 implementation:
@@ -38,7 +40,7 @@ cssclasses: [agent-note]
 
 # Retries pile up because the lock outlives the worker
 
-> [!success|banner] Resolved 2026-10-05
+> [!success|banner] Resolved 2026-10-05 16:08:41
 > The job lock now expires with the worker's lease, so a crashed worker no longer blocks its retries.
 
 ## 1. Symptom
@@ -46,6 +48,7 @@ cssclasses: [agent-note]
 ````
 
 - Properties: keep exactly these, because they sit above the banner and every extra row pushes it down. `status` uses the kind's own vocabulary (listed in its section); keep `updated` current; `tags` holds the kind's tag plus a nested `category/subcategory` tag (the tags are what dashboards query); `implementation` holds the summary link once it exists.
+- Times: write `created` and `updated` as local date and time to the second, `YYYY-MM-DDTHH:mm:ss`, so Obsidian reads them as date and time. Read the clock for every write (for example `date +%Y-%m-%dT%H:%M:%S`); never guess or round a time, and never write a date alone. Any other time in a note (a banner, a quote label) uses the same clock reading, written `YYYY-MM-DD HH:mm:ss`.
 - Title: a sentence-case statement a person would search for, not the filename. Repeat it in `aliases`, double-quoted, since an unquoted comma splits it into several aliases.
 - Banner: the first block after the title is a callout with `|banner` metadata that states the note's point in one or two sentences. Its type carries the status color, as each kind's section says.
 - Callout colors carry meaning, so use each type only for its role: `abstract` for a proposal or the approach before a change, `warning` for what the user changed or rejected and for caveats, `success` for agreed rules and what now holds, `failure` for what was abandoned, `todo` for open follow-ups, `quote` for verbatim messages. Keep the rest as plain prose, tables, and lists; a note where everything is a callout has no emphasis.

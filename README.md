@@ -34,7 +34,9 @@ The instructions are a plain prompt, not a skill or plugin, so any agent that re
 It asks what to record and what to leave out, then adds a block between `<!-- BEGIN tactical-direction-context -->` and `<!-- END tactical-direction-context -->` to the project's `AGENTS.md`.
 The block holds the rules for exactly the kinds you chose, and nothing for the ones you did not.
 2. **Your agent reads `AGENTS.md` at the start of every session**, as Codex, Cursor and many other coding agents already do (for Claude Code, see [Requirements](#requirements)).
-3. **When one of those moments happens, the agent writes or updates a note** in that kind's folder.
+3. **When one of those moments happens, the agent asks you first**, with a Yes/No selector in its UI that names the note's kind, title and path.
+It writes or updates the note in that kind's folder only when you answer Yes.
+Agents that run unattended can skip the question; see [`--headless`](#install-without-prompts).
 When the related work is finished, it links the note to its implementation summary.
 
 Nothing runs in the background.
@@ -198,6 +200,9 @@ npx --yes github:andyqioe/auto-note-taker \
   --add-skip 'anything about the CI provider' \
   --obsidian-extras
 
+# Agents that run unattended (CI, scheduled jobs) write notes without asking
+npx --yes github:andyqioe/auto-note-taker --project . --yes --headless
+
 # Pin a reviewed commit for reproducible installs
 npx --yes github:andyqioe/auto-note-taker#COMMIT_SHA --project . --yes
 ```
@@ -212,6 +217,7 @@ npx --yes github:andyqioe/auto-note-taker#COMMIT_SHA --project . --yes
 | `--add-skip TEXT` | Also never record this, in your words; repeat for several. |
 | `--obsidian-extras` | Also install the styling snippet and dashboard, if the notes folder is inside a vault. |
 | `--no-obsidian-extras` | Never offer or install them. |
+| `--headless` | Let agents write notes without asking. By default the block tells agents to ask a Yes/No question before each note, and to write nothing when no one can answer. It is never remembered: pass it on every run that should stay headless, `--check` included. |
 | `--yes`, `-y` | Do not prompt; use defaults for anything not given. |
 | `--check` | Report whether the block is current, without writing. |
 | `--help`, `-h` | Print usage. |
@@ -261,8 +267,8 @@ The screenshots show a tactical-direction note; every other kind shares the same
 ```yaml
 ---
 status: agreed                 # the kind's own vocabulary, here agreed | pending | superseded
-created: 2026-10-05
-updated: 2026-10-05
+created: 2026-10-05T14:32:07  # local time to the second, read from the clock
+updated: 2026-10-05T16:08:41
 tags: [tactical-direction, webhook/delivery]
 aliases: ["Retry failed webhook deliveries with a fixed 30-second delay"]
 implementation:                # the implementation-summary link, once it exists
@@ -270,6 +276,7 @@ cssclasses: [agent-note]
 ---
 ```
 
+Obsidian shows `created` and `updated` as date-and-time properties, so the dashboard orders notes written on the same day correctly.
 The kind's tag (here `tactical-direction`) is what the dashboard queries, and the nested tag groups notes by area in Obsidian's tag pane.
 The alias repeats the title in quotes, because an unquoted comma would split it into several aliases.
 

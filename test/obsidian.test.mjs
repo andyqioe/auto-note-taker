@@ -63,5 +63,5 @@ test('non-interactive runs never prompt and keep the old output', async t => {
   const project = await tmp(t);
   const r = spawnSync(process.execPath, [cli, '--project', project], {encoding: 'utf8', input: ''});
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\n$/);
+  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n$/);
 });
