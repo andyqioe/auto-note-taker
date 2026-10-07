@@ -65,6 +65,8 @@ npx --yes github:andyqioe/auto-note-taker
 Pick the notes folder, tick what to record and what never to record, accept the styling if the folder is in an Obsidian vault, and confirm.
 That is the whole setup.
 
+To add or remove kinds later, run `npx --yes github:andyqioe/auto-note-taker update` from the same project (see [Add or remove kinds later](#add-or-remove-kinds-later)).
+
 ## Install step by step
 
 ### 1. Start the wizard
@@ -231,24 +233,80 @@ Exit codes: `0` on success (and for `--check` when the block is current), `1` on
 
 ## Add or remove kinds later
 
-`update` changes which kinds an existing install records and nothing else: the notes folder, your exclusions and the headless setting stay as they are.
-Run it from the project, in a terminal:
+Once a project is installed, `update` changes which kinds of notes agents record, and nothing else.
+The notes folder, your exclusions, the styling and the headless setting stay as they are.
+Use it to start recording a built-in kind, to add a kind of your own, to change how one of your kinds is written, or to stop recording a kind.
+
+### 1. Start the update
+
+From the project, in a terminal:
 
 ```sh
+cd ~/code/storefront
 npx --yes github:andyqioe/auto-note-taker update
 ```
 
-![The update wizard: the project and notes folder it keeps, the new Record choice, and a confirmation that adds a "To-dos" kind with its folder and sections](docs/images/wizard-update.png)
+To update another project, add `--project PATH`.
+The project must already have the block; if it does not, `update` stops and tells you to [install](#quick-start) first.
 
-It shows the Record checklist with your current kinds ticked.
-Tick a built-in kind to add it, untick one to stop recording it, or choose **+ Add your own kind…** and answer the same four questions as in the install (name, when, sections, how to write it).
-It then shows what will be added and removed, with each new kind's folder and sections, and asks before writing.
-When it is done, it prints the same update as a command.
+### 2. Tick and untick kinds
 
-Without a terminal, or to script it, name the changes with flags:
+![The update wizard's Record checklist: the project and notes folder it keeps, then every kind, with Pivots, Challenges & fixes, Decisions & tradeoffs and the custom "Perf wins" ticked, and "Add your own kind…" at the bottom](docs/images/wizard-update-record.png)
+
+The wizard shows the project and notes folder it keeps, then the Record checklist with the kinds you record now ticked.
+
+- **Add a built-in kind:** move to it with the arrow keys and press `Space`.
+- **Stop recording a kind:** untick it with `Space`. The notes it already wrote stay where they are.
+- **Add a kind of your own:** choose **+ Add your own kind…** and go to step 3.
+
+Press `Enter` when the ticks are right.
+At least one kind must stay ticked.
+
+### 3. Describe a kind of your own
+
+The wizard asks four questions, one at a time:
+
+| Question | What to type | What it becomes |
+|---|---|---|
+| Name of the new kind | A short name, such as `To-dos` | The kind's label, its folder (`To-dos/`) and its tag (`to-dos`) |
+| Record "To-dos" when… | The moment that should produce a note, such as `the user says "add X to todo"` | The definition agents follow, word for word |
+| Sections of each "To-dos" note | Press `Enter` to keep `Context, What happened, Why it matters, Follow-ups`, or clear it with `Ctrl+U` and type your own, comma-separated | The numbered `##` headings every note of this kind has, in order |
+| How should agents write "To-dos" notes? | Optional: anything about the shape of the notes, such as `keep To-dos/To-dos.md as a summary page linking every to-do`; press `Enter` to skip | An instruction that overrides the kind's sections and the shared layout, but never your exclusions |
+
+![The sections question for a new "To-dos" kind, with "Task, Context, Done when, Links" typed in place of the suggested sections](docs/images/wizard-update-sections.png)
+
+Keep the name short and put the rest in the other answers.
+A name like "To-dos - create a summary page listing every to-do" becomes a folder and a tag with that whole sentence in it.
+
+After the last question, the new kind is back in the checklist, ticked.
+Press `Esc` on any question to go back to the checklist without adding it.
+
+### 4. Confirm
+
+![The confirmation: To-dos will be added with its folder and sections, followed by the full list of kinds that will be recorded, and Yes selected](docs/images/wizard-update.png)
+
+The last screen lists what changes: each kind to **add** with its folder and sections, each kind to **remove**, and the full list you will **record** afterwards.
+Choose **Yes** to write it, or **No** to leave everything as it was.
+If nothing changed, the wizard says so and writes nothing.
+
+### 5. Done
+
+![The finished update: the AGENTS.md block and the Obsidian dashboard updated, and the same update printed as one command](docs/images/wizard-update-done.png)
+
+The wizard updates the block in `AGENTS.md`.
+If the notes folder has the Obsidian dashboard, it updates that too, so each new kind gets its own view.
+It finishes by printing the same update as a command, which you can save or rerun in another project.
+
+Agents follow the new kinds from their next session.
+To check, open `AGENTS.md`: each kind you added has its own `###` section under **Agent notes**, with its folder, tag and sections.
+
+### Update without prompts
+
+Name the changes with flags instead.
+This also works without a terminal, for example in a script.
 
 ```sh
-# Add a built-in kind
+# Start recording a built-in kind
 npx --yes github:andyqioe/auto-note-taker update --add-kind gotchas
 
 # Add a kind of your own, with its own sections and instructions
@@ -261,18 +319,50 @@ npx --yes github:andyqioe/auto-note-taker update \
 npx --yes github:andyqioe/auto-note-taker update --remove-kind pivots
 ```
 
+`update` prints what it did:
+
+```text
+Updated: /Users/you/code/storefront/AGENTS.md
+Added: To-dos (Agent Notes/To-dos)
+Recording: Pivots, Challenges & fixes, To-dos
+```
+
+Running the same command again prints `Already current:` and changes nothing.
+You can combine several `--add-kind` and `--remove-kind` flags in one run.
+`--kind-sections` and `--kind-details` describe the `--add-kind "NAME=WHEN"` just before them, so give them right after it.
+
 | Flag | Meaning |
 |---|---|
 | `--project PATH` | Project to update. Default: the current directory. It must already have the block. |
-| `--add-kind KIND` | Add a built-in kind by id, or one of your own as `"NAME=WHEN"`. Giving a kind of your own a name it already has replaces its definition, which is how you change one. |
-| `--kind-sections LIST` | Sections of the kind of your own just added, comma-separated; at most 10. |
+| `--add-kind KIND` | Add a built-in kind by id (`tactical-direction`, `pivots`, `challenges`, `decisions`, `dead-ends`, `gotchas`, `open-questions`), or one of your own as `"NAME=WHEN"`. |
+| `--kind-sections LIST` | Sections of the kind of your own just added, comma-separated; at most 10, without backticks or `#`. Default: `Context, What happened, Why it matters, Follow-ups`. |
 | `--kind-details TEXT` | How agents should write the kind of your own just added; one line, at most 600 characters. |
 | `--remove-kind KIND` | Stop recording a kind, by id (`pivots`) or name (`Perf wins`), in any case. |
 | `--yes`, `-y` | Do not prompt. |
 
-`update` prints each kind it added, changed or removed, and writes nothing when the install already matches.
-If the notes folder has the managed dashboard, it also updates the dashboard so each new kind gets its own view.
-Other flags, such as `--notes-dir` or `--skip`, belong to the full installer; `update` refuses them so it never changes more than you asked.
+Other flags, such as `--notes-dir` or `--skip`, belong to the full installer.
+`update` refuses them, so it never changes more than you asked.
+
+### Change a kind of your own
+
+Add it again under the same name with the new definition; `update` replaces the old one and prints `Changed:`.
+Give every part you want to keep, because the new definition replaces the whole old one:
+
+```sh
+npx --yes github:andyqioe/auto-note-taker update \
+  --add-kind 'Perf wins=a change with before and after timings' \
+  --kind-sections 'Before, After, How measured'
+```
+
+To rename a kind, remove the old name and add the new one in the same run.
+Its existing notes stay in the old folder; move them yourself if you want them together.
+
+```sh
+npx --yes github:andyqioe/auto-note-taker update \
+  --remove-kind 'To-dos - create a summary page listing every to-do' \
+  --add-kind 'To-dos=the user says "add X to todo"' \
+  --kind-details 'keep To-dos/To-dos.md as a summary page listing every to-do with its status and a link to its note'
+```
 
 ## What agents record
 
