@@ -159,7 +159,7 @@ Secrets are always redacted, whatever you tick.
 
 ### 7. Decide on styling
 
-![The styling step, listing the snippet, the appearance setting and the Agent Notes.base dashboard it will add](docs/images/wizard-styling.png)
+![The styling step, listing the snippet, the appearance setting, the Agent Notes.base dashboard and the property types it will add](docs/images/wizard-styling.png)
 
 If the notes folder is inside an Obsidian vault, the wizard offers to add a styling snippet and a dashboard, and lists every file it would add (`+`) or change (`~`).
 See [Obsidian styling and dashboard](#obsidian-styling-and-dashboard) for what they do.
@@ -276,7 +276,8 @@ cssclasses: [agent-note]
 ---
 ```
 
-Obsidian shows `created` and `updated` as date-and-time properties, so the dashboard orders notes written on the same day correctly.
+`created` and `updated` carry the time to the second, so the dashboard orders notes written on the same day correctly.
+Obsidian guesses a time with seconds as plain text, so the [Obsidian extras](#obsidian-styling-and-dashboard) type both properties as date and time.
 The kind's tag (here `tactical-direction`) is what the dashboard queries, and the nested tag groups notes by area in Obsidian's tag pane.
 The alias repeats the title in quotes, because an unquoted comma would split it into several aliases.
 
@@ -317,7 +318,7 @@ A small `mermaid` diagram appears only when the agreement is a flow or a state m
 
 ## Obsidian styling and dashboard
 
-When the notes folder is inside a vault, the installer can add two files (the wizard asks; scripts pass `--obsidian-extras`).
+When the notes folder is inside a vault, the installer can add two files and adjust two settings (the wizard asks; scripts pass `--obsidian-extras`).
 
 **`.obsidian/snippets/tactical-direction.css`**, enabled by adding `tactical-direction` to `enabledCssSnippets` in `.obsidian/appearance.json` (your other settings are kept).
 It only affects notes with `cssclasses: [agent-note]` (or `[tactical-direction]`, from earlier versions), and it:
@@ -331,11 +332,13 @@ It only affects notes with `cssclasses: [agent-note]` (or `[tactical-direction]`
 Without the snippet, every element falls back to a stock Obsidian callout, so notes stay readable.
 To turn it on or off by hand: **Settings → Appearance → CSS snippets → tactical-direction**.
 
+**`.obsidian/types.json`**: `created` and `updated` are set to the date-and-time type, so Obsidian shows them as `10/05/2026, 10:14:07 AM` instead of plain text; the types of your other properties are kept.
+
 **`Agent Notes.base`** in the notes folder: a dashboard of every note of the kinds you record.
 **All by kind** groups every note by its folder, newest first; then one view per kind groups its notes by status; **Open** lists everything still waiting on someone (pending direction, open challenges and questions, proposed decisions, dead ends to revisit).
 It is rebuilt when you change what you record.
 
-![The Bases dashboard grouping five decisions by status](docs/images/note-dashboard.png)
+![The Bases dashboard grouping five tactical-direction notes by status, newest update first, each with its date and time](docs/images/note-dashboard.png)
 
 The installer never overwrites your changes.
 It updates the snippet only while its first line still reads `auto-note-taker: managed snippet`; delete that line to make the file yours.
@@ -382,11 +385,14 @@ If you added the styling, also delete `.obsidian/snippets/tactical-direction.css
 ```text
 bin/install.mjs                      command-line flags and the wizard
 docs/make-screenshots.py             regenerates the wizard screenshots
+docs/make-note-screenshots.mjs       regenerates the Obsidian note screenshots from docs/demo-notes/
+docs/demo-notes/                     the sample notes those screenshots show
 lib/install.mjs                      renders, plans and writes the managed block, and reads back its saved choice
 lib/kinds.mjs                        the note kinds and exclusions, and selection validation
 lib/obsidian.mjs                     vault discovery, snippet, and the dashboard generated from the chosen kinds
 lib/ui.mjs                           dependency-free terminal prompts, including the checklist
 context/AGENTS.md                    the shared instructions that get installed
+context/ask.md                       the ask-before-writing rule, left out by --headless
 context/kinds/                       one file of instructions per note kind (custom.md for your own)
 context/obsidian/                    the styling snippet
 test/                                node:test suites
@@ -410,6 +416,15 @@ python3 docs/make-screenshots.py
 ```
 
 It runs the wizard in a pseudo-terminal against a staged `~/code/storefront` project and `~/Documents/Notes` vault in a temporary folder, and captures each screen in the terminal frame at 2x.
+
+The note screenshots in `docs/images/note-*.png` come from the sample notes in `docs/demo-notes/`, rendered by Obsidian itself.
+After changing the note layout, the snippet or the dashboard, update the sample notes to match and regenerate the screenshots (needs Obsidian 1.9 or newer and Node 22 or newer, macOS):
+
+```sh
+node docs/make-note-screenshots.mjs
+```
+
+It builds a vault in a temporary folder, installs the snippet and dashboard with `bin/install.mjs --obsidian-extras`, opens the vault in an Obsidian with its own user data (your vaults and settings are not touched), and captures each shot at 2x over the DevTools protocol.
 The `note-*.png` images are real Obsidian captures and are not generated.
 
 For a portable package, run `npm pack` and install the `.tgz` with `npx --package ./auto-note-taker-<version>.tgz auto-note-taker`.
