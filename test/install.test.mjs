@@ -108,7 +108,7 @@ test('update redefines a kind of your own by name, removes kinds, and refreshes 
  const root=await project(t),vault=await project(t);await fs.mkdir(path.join(vault,'.obsidian'));
  assert.equal(run(root,'--notes-dir',path.join(vault,'Notes'),'--add-kind','Perf wins=a change sped something up','--obsidian-extras').status,0);
  const r=update(root,'--add-kind','Perf wins=a change with before and after timings','--remove-kind','pivots');assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/Changed: Perf wins .*\nRemoved: Pivots\nRecording: Challenges & fixes, Perf wins\nObsidian notes dashboard \(Bases\): update /);
+ assert.match(r.stdout,/Changed: Perf wins .*\nRemoved: Pivots\nRecording: Challenges & fixes, Perf wins\nCreated summary: Challenges\/summary\.md\nCreated summary: Perf wins\/summary\.md\nObsidian notes dashboard \(Bases\): update /);
  const text=await block(root);assert.ok(text.includes('when: a change with before and after timings')&&!text.includes('### Pivots'));
  const base=await fs.readFile(path.join(vault,'Notes','Agent Notes.base'),'utf8');assert.ok(base.includes('name: "Perf wins"')&&!base.includes('name: "Pivots"'));
  assert.equal(update(root,'--remove-kind','perf WINS').status,0,'names match in any case');assert.ok(!(await block(root)).includes('Perf wins'));

@@ -395,6 +395,7 @@ Other flags, such as `--notes-dir` or `--skip`, belong to the full installer.
 
 - **Flat notes move into topic folders.** A note named `pool-hostMode-fencingDesign.md` directly in its kind's folder moves to `pool/hostMode/fencingDesign.md` under it. Every link to it in the vault is rewritten to the new path: `[[wikilinks]]` (keeping their text), embeds, and Markdown links, absolute or relative. A note whose new place is taken stays where it is, and a name that does not follow the old pattern (`Meeting notes.md`) is left alone.
 - **A kind whose name holds its instructions gets a short name.** A name such as `To-dos - if the user says "add to todo" keep a summary page` becomes `To-dos`, and the rest of the old name becomes the first part of the kind's instructions. Its notes move to the short folder and their tag changes to the short one, so the dashboard finds them.
+- **Every kind gets its summary.** Each kind's `summary.md` is rebuilt from its notes (see [What agents record](#what-agents-record)).
 - **Leftovers are removed.** The folder of a kind you no longer record is removed when nothing but empty folders is in it, and a `Tactical Direction.base` from an early version is removed when it is still exactly as that version wrote it. A note is never deleted.
 
 Then it reads everything back: the block must parse to the settings it was given and match what they render, and every moved or edited note must be in place with its new text.
@@ -490,6 +491,26 @@ Agent Notes/
 The path is `<kind folder>/<category>/<sub-category>/<detail>.md`; a note with no sub-category sits in `<kind folder>/<category>/`.
 Agents reuse the category and sub-category folders that already exist, in every kind, so one topic has one name everywhere, and the note's nested tag (`pool/hostMode`) matches its folders.
 Because a file name such as `stateHandling.md` can appear in more than one folder, agents link to notes by path: `[[Tactical Direction/proxy/session/stateHandling|Session state stays in the controller]]`, from the vault root when the notes are in an Obsidian vault.
+
+Each kind's folder also has a `summary.md`: every note of that kind, grouped by category, newest first, each with its title as a link, its sub-category, status and last update.
+The banner counts the notes and how many are still open.
+
+```markdown
+# Decisions & tradeoffs summary
+
+> [!info|banner] 3 notes, 1 open, last updated 2026-10-07 09:00:00
+
+## pool
+
+| Note | Sub-category | Status | Updated |
+| --- | --- | --- | --- |
+| [[Decisions/pool/hostMode/generations\|Fences carry generation numbers]] | hostMode | proposed | 2026-10-07 09:00:00 |
+| [[Decisions/pool/hostMode/fencingDesign\|The controller fences workers]] | hostMode | made | 2026-10-06 10:00:00 |
+```
+
+Agents add their note's row when they write one.
+The installer and `update` rebuild every summary from the notes' own properties, so the page always matches the notes; a summary has no kind tag, so the dashboard never counts it as a note.
+Summaries are written once the notes folder exists, and a summary whose `auto-note-taker: managed summary` line you delete is yours and is left alone.
 
 Notes link to each other where one led to another: a dead end to the pivot it caused, a challenge to the decision it forced.
 
@@ -646,6 +667,7 @@ lib/diff.mjs                         the line diff every run shows of AGENTS.md
 lib/kinds.mjs                        the note kinds and exclusions, and selection validation
 lib/layout.mjs                       moves flat notes into topic folders and rewrites the links to them
 lib/cleanup.mjs                      what update tidies (kind names, leftovers) and the read-back check of every write
+lib/summary.mjs                      each kind's summary.md, built from its notes' properties
 lib/obsidian.mjs                     vault discovery, snippet, and the dashboard generated from the chosen kinds
 lib/ui.mjs                           dependency-free terminal prompts, including the checklist
 context/AGENTS.md                    the shared instructions that get installed

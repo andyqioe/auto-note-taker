@@ -24,6 +24,7 @@ When a topic already has a note, update that note instead of starting another.
 - Before creating a folder, list the folders the notes already use, in every kind, and reuse a matching category or sub-category, so one topic has one name everywhere. Write folder and file names in lowerCamelCase.
 - The file name is only the last part (`stateHandling.md`), so the same name can appear in other folders. Link to a note by its path {{link_from}}, with the title as the link text: `{{link_example}}`. A link by name alone may open the wrong note.
 - The nested tag in `tags` is the note's category and sub-category folders, for example `proxy/session`.
+- Each kind's folder has a `summary.md` listing every note of that kind by category, with its status and last update. After creating or updating a note, add or update its row there in the same format, creating the page the same way if it is missing; the installer rebuilds these pages from the notes' properties.
 - The user's explicit naming convention takes precedence over generic filename style rules for these notes.
 - Each kind's section lists its required sections, in order. When a section has nothing to say, say so in one line; do not invent content to fill it.
 
