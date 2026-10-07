@@ -16,8 +16,8 @@ const repo = fileURLToPath(new URL('..', import.meta.url));
 const images = path.join(repo, 'docs/images');
 const app = process.env.OBSIDIAN ?? '/Applications/Obsidian.app/Contents/MacOS/Obsidian';
 const port = 9334;
-const note = 'Projects/storefront/Tactical Direction/webhook-delivery-retryPolicy.md';
-const pending = 'Projects/storefront/Tactical Direction/uploader-s3-multipartTuning.md';
+const note = 'Projects/storefront/Tactical Direction/webhook/delivery/retryPolicy.md';
+const pending = 'Projects/storefront/Tactical Direction/uploader/s3/multipartTuning.md';
 const shots = [
   {name: 'note-agreed', file: note, width: 1000, height: 800},
   {name: 'note-banner', file: note, at: '# ', width: 1000, height: 400},

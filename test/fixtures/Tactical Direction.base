@@ -1,0 +1,42 @@
+filters:
+  and:
+    - file.hasTag("tactical-direction")
+properties:
+  note.status:
+    displayName: Status
+  note.updated:
+    displayName: Updated
+  note.aliases:
+    displayName: Decision
+  note.implementation:
+    displayName: Implementation
+views:
+  - type: table
+    name: By status
+    groupBy:
+      property: note.status
+      direction: ASC
+    order:
+      - note.aliases
+      - file.name
+      - note.updated
+      - note.implementation
+    sort:
+      - property: note.updated
+        direction: DESC
+    columnSize:
+      note.aliases: 560
+      file.name: 300
+  - type: table
+    name: Open
+    filters:
+      and:
+        - 'note.status != "agreed"'
+        - 'note.status != "superseded"'
+    order:
+      - note.aliases
+      - file.name
+      - note.updated
+    columnSize:
+      note.aliases: 560
+      file.name: 300

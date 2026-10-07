@@ -2,7 +2,7 @@
 status: agreed
 created: 2026-10-05T10:14:07
 updated: 2026-10-05T10:29:34
-tags: [tactical-direction, webhook/delivery-retry]
+tags: [tactical-direction, webhook/delivery]
 aliases: ["Retry failed webhook deliveries with a fixed 30-second delay"]
 implementation:
 cssclasses: [agent-note]

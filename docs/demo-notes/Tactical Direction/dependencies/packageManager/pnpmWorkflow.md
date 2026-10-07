@@ -2,7 +2,7 @@
 status: agreed
 created: 2026-10-05T14:48:53
 updated: 2026-10-05T14:56:08
-tags: [tactical-direction, dependencies/package-manager]
+tags: [tactical-direction, dependencies/packageManager]
 aliases: ["Use pnpm only, pin exact dependency versions, and commit lockfile changes separately"]
 implementation:
 cssclasses: [agent-note]

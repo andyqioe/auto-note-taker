@@ -18,9 +18,13 @@ When a topic already has a note, update that note instead of starting another.
 
 {{kind_sections}}
 
-### Filenames
+### Folders and filenames
 
-- Filename: `[Category]-[Sub-category]-[Sub-sub-category].md`, for example `proxy-session-stateHandling.md`. The user's explicit naming convention takes precedence over generic filename style rules for these notes.
+- Path: `<kind folder>/<category>/<sub-category>/<detail>.md`, three folders at most counting the kind folder, for example `{{example_path}}`. A note with no sub-category goes in `<kind folder>/<category>/`.
+- Before creating a folder, list the folders the notes already use, in every kind, and reuse a matching category or sub-category, so one topic has one name everywhere. Write folder and file names in lowerCamelCase.
+- The file name is only the last part (`stateHandling.md`), so the same name can appear in other folders. Link to a note by its path {{link_from}}, with the title as the link text: `{{link_example}}`. A link by name alone may open the wrong note.
+- The nested tag in `tags` is the note's category and sub-category folders, for example `proxy/session`.
+- The user's explicit naming convention takes precedence over generic filename style rules for these notes.
 - Each kind's section lists its required sections, in order. When a section has nothing to say, say so in one line; do not invent content to fill it.
 
 ### Note layout
@@ -53,7 +57,7 @@ cssclasses: [agent-note]
 - Banner: the first block after the title is a callout with `|banner` metadata that states the note's point in one or two sentences. Its type carries the status color, as each kind's section says.
 - Callout colors carry meaning, so use each type only for its role: `abstract` for a proposal or the approach before a change, `warning` for what the user changed or rejected and for caveats, `success` for agreed rules and what now holds, `failure` for what was abandoned, `todo` for open follow-ups, `quote` for verbatim messages. Keep the rest as plain prose, tables, and lists; a note where everything is a callout has no emphasis.
 - Use a table when several points are compared (options, attempts, proposed vs. changed). Use a `mermaid` diagram only when the content is a flow or state machine, and keep it small enough to read at page width (about eight nodes).
-- Link with `[[wikilinks]]` to related notes of any kind (a pivot to the dead end that caused it, a challenge to the decision it forced) and other notes in the same vault; use Markdown links with angle-bracketed paths for files outside it. Mark code paths and identifiers with inline code.
+- Link with path `[[wikilinks]]` (see Folders and filenames) to related notes of any kind (a pivot to the dead end that caused it, a challenge to the decision it forced) and other notes in the same vault; use Markdown links with angle-bracketed paths for files outside it. Mark code paths and identifiers with inline code.
 - Quote the user verbatim, in a `quote` callout labelled User with the message in a fenced `text` block, whenever their words triggered or decided what the note records. When a message itself contains backticks, make the fence longer than the longest backtick run inside it.
 
 ### Writing
