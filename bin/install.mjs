@@ -8,7 +8,7 @@ import {knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian
 import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, run, selectPrompt} from '../lib/ui.mjs';
 
 const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--record KINDS] [--skip ITEMS] [--add-kind "NAME=WHEN"]...
-                       [--add-skip TEXT]... [--obsidian-extras | --no-obsidian-extras] [--yes] [--check]
+                       [--add-skip TEXT]... [--obsidian-extras | --no-obsidian-extras] [--headless] [--yes] [--check]
 
 Installs or updates one managed block in AGENTS.md telling agents which moments to record as Obsidian notes,
 and which to leave out. Run in a terminal with no flags to choose everything interactively.
@@ -24,12 +24,14 @@ and which to leave out. Run in a terminal with no flags to choose everything int
   --add-skip TEXT         also never record this, in your words
   --obsidian-extras       also install the note styling snippet and a Bases dashboard into the notes' vault
   --no-obsidian-extras    never offer them
+  --headless              let agents write notes without asking; by default they ask a Yes/No question before each
+                          note. Pass it on every run that should stay headless, --check included
   --yes, -y               do not prompt; use defaults for anything not given
   --check                 report whether the block is current, without writing`;
 
 const args = process.argv.slice(2);
 const options = {addKind: [], addSkip: []};
-let check = false, yes = false, extras;
+let check = false, yes = false, headless = false, extras;
 const list = v => v === 'none' ? [] : v.split(',').map(x => x.trim()).filter(Boolean);
 try {
   for (let i = 0; i < args.length; i++) {
@@ -37,6 +39,7 @@ try {
     if (arg === '--help' || arg === '-h') { console.log(usage); process.exit(0); }
     if (arg === '--check') { check = true; continue; }
     if (arg === '--yes' || arg === '-y') { yes = true; continue; }
+    if (arg === '--headless') { headless = true; continue; }
     if (arg === '--obsidian-extras' || arg === '--no-obsidian-extras') { extras = arg === '--obsidian-extras'; continue; }
     if (!['--project', '--notes-dir', '--record', '--skip', '--add-kind', '--add-skip'].includes(arg) || args[i + 1] === undefined || args[i + 1].startsWith('--'))
       throw new Error(`Invalid argument: ${arg}`);
@@ -74,13 +77,13 @@ function labels(selection) { return selectedKinds(selection).map(k => k.label).j
 async function direct() {
   const {prior} = await readProject(options.project ?? process.cwd());
   const installed = installedConfig(prior);
-  const plan = await planInstall(options.project ?? process.cwd(), options['notes-dir'] ?? installed?.notesDir ?? defaultNotesDir, selectionFrom(installed?.selection));
+  const plan = await planInstall(options.project ?? process.cwd(), options['notes-dir'] ?? installed?.notesDir ?? defaultNotesDir, selectionFrom(installed?.selection), {headless});
   if (check) {
     console.log(plan.change === 'current' ? 'Context is current.' : 'Context is missing or out of date.');
     process.exitCode = plan.change === 'current' ? 0 : 1;
     return;
   }
-  if (await writeInstall(plan)) console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}`);
+  if (await writeInstall(plan)) console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
   else console.log(`Already installed: ${plan.target}`);
   if (extras) {
     const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
@@ -138,7 +141,7 @@ async function wizard() {
   const command = ['npx --yes github:andyqioe/auto-note-taker', `--project ${quote(plan.root)}`, `--notes-dir ${quote(plan.notesDir)}`,
     `--record ${sel.record.join(',') || 'none'}`, ...sel.customKinds.map(k => `--add-kind ${quote(`${k.name}=${k.when}`)}`),
     `--skip ${sel.skip.join(',') || 'none'}`, ...sel.customSkips.map(t => `--add-skip ${quote(t)}`),
-    ...(state.extras ? ['--obsidian-extras'] : [])];
+    ...(state.extras ? ['--obsidian-extras'] : []), ...(headless ? ['--headless'] : [])];
   out(c.dim(command.map((part, i) => `   ${i ? '  ' : ''}${part}`).join(' \\\n')));
   out('');
 }
@@ -248,7 +251,7 @@ async function chooseSkip(state) {
 }
 
 async function chooseExtras(state) {
-  const plan = await planInstall(state.project, state.notes ?? options['notes-dir'], state.selection);
+  const plan = await planInstall(state.project, state.notes ?? options['notes-dir'], state.selection, {headless});
   state.plan = plan;
   const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
   state.extraSteps = null;
@@ -281,6 +284,7 @@ async function confirmInstall(state) {
     `${c.dim('notes       ')}  ${displayPath(notesAbsolute, wide())}${existsSync(notesAbsolute) ? '' : c.dim('  · new')}`,
     ...rows('record', chosen.map(k => k.label)),
     ...rows('folders', chosen.map(k => k.folder === '.' ? '(the notes folder)' : k.folder + '/'), '  '),
+    `${c.dim('ask first   ')}  ${headless ? 'no, agents write notes without asking (--headless)' : 'yes, a Yes/No question before each note'}`,
     ...(skipped.length ? rows('never record', skipped) : [`${c.dim('never record')}  ${c.dim('nothing excluded')}`]),
   ]}));
 }

@@ -35,7 +35,7 @@ const block=async root=>(await fs.readFile(path.join(root,'AGENTS.md'),'utf8'));
 const section=(text,title)=>text.includes(`\n### ${title}\n`);
 test('a fresh install records pivots and challenges, each in its own folder, and leaves out the default exclusions',async t=>{
  const root=await project(t);const r=run(root);assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/Notes: Agent Notes\nRecording: Pivots, Challenges & fixes\n$/);
+ assert.match(r.stdout,/Notes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n$/);
  const text=await block(root);
  assert.ok(section(text,'Pivots')&&section(text,'Challenges and how they were overcome'));
  assert.ok(!section(text,'Tactical direction and disagreements')&&!section(text,'Decisions and tradeoffs'),'kinds not chosen are not rendered');
@@ -69,4 +69,22 @@ test('bad selections fail before anything is written',async t=>{
   const r=run(root,...args);assert.equal(r.status,1,args.join(' '));assert.match(r.stderr,/auto-note-taker: /);
  }
  assert.equal(await fs.readFile(p,'utf8'),'Keep\n');
+});
+test('agents ask a Yes/No question before each note unless the install is explicitly headless',async t=>{
+ const root=await project(t);assert.equal(run(root).status,0);
+ const asking=await block(root);
+ assert.ok(section(asking,'Ask before writing'));
+ for(const want of ['explicit Yes/No selector','Write the note only on Yes','If no user can answer']) assert.ok(asking.includes(want),want);
+ const r=run(root,'--headless');assert.equal(r.status,0,r.stderr);assert.match(r.stdout,/Ask before each note: no \(headless\)\n$/);
+ const headless=await block(root);
+ assert.ok(!section(headless,'Ask before writing')&&!headless.includes('Yes/No'),'a headless install drops the question');
+ assert.equal(run(root,'--check','--headless').status,0);
+ assert.equal(run(root,'--check').status,1,'headless is never inherited: a run without the flag asks again');
+ assert.equal(run(root).status,0);assert.equal(await block(root),asking);
+});
+test('notes are timestamped to the second',async t=>{
+ const root=await project(t);assert.equal(run(root,'--record','tactical-direction').status,0);
+ const text=await block(root);
+ for(const want of ['created: 2026-10-05T14:32:07','updated: 2026-10-05T16:08:41','`YYYY-MM-DDTHH:mm:ss`','date +%Y-%m-%dT%H:%M:%S','never write a date alone','User · 2026-10-05 14:32:07']) assert.ok(text.includes(want),want);
+ assert.ok(!/^(created|updated): \d{4}-\d\d-\d\d$/m.test(text),'no date-only properties remain');
 });

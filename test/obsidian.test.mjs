@@ -34,9 +34,13 @@ test('vault root is found from a notes folder that does not exist yet', async t 
 test('extras enable the snippet, keep existing settings, and never overwrite user edits', async t => {
   const v = await vault(t), notes = path.join(v, 'Agent Notes');
   await fs.writeFile(path.join(v, '.obsidian/appearance.json'), JSON.stringify({theme: 'moonstone', enabledCssSnippets: ['mine']}));
+  // A vault that saw seconds-precision times before this install guessed them as text.
+  await fs.writeFile(path.join(v, '.obsidian/types.json'), JSON.stringify({types: {owner: 'text', created: 'text'}}));
   await writeExtras(await planExtras(v, notes, chosen()));
   const appearance = JSON.parse(await fs.readFile(path.join(v, '.obsidian/appearance.json'), 'utf8'));
   assert.deepEqual(appearance, {theme: 'moonstone', enabledCssSnippets: ['mine', 'tactical-direction']});
+  const types = JSON.parse(await fs.readFile(path.join(v, '.obsidian/types.json'), 'utf8'));
+  assert.deepEqual(types, {types: {owner: 'text', created: 'datetime', updated: 'datetime'}}, 'timestamps are typed, other types are kept');
   const base = await fs.readFile(path.join(notes, 'Agent Notes.base'), 'utf8');
   assert.match(base, /file\.hasTag\("tactical-direction"\)/);
   assert.match(base, /name: "Challenges & fixes"/);
@@ -57,11 +61,12 @@ test('--obsidian-extras installs into the notes vault without prompting', async 
   assert.equal(r.status, 0, r.stderr);
   await fs.access(path.join(v, '.obsidian/snippets/tactical-direction.css'));
   await fs.access(path.join(v, 'TD/Agent Notes.base'));
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(v, '.obsidian/types.json'), 'utf8')), {types: {created: 'datetime', updated: 'datetime'}});
 });
 
 test('non-interactive runs never prompt and keep the old output', async t => {
   const project = await tmp(t);
   const r = spawnSync(process.execPath, [cli, '--project', project], {encoding: 'utf8', input: ''});
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\n$/);
+  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n$/);
 });
