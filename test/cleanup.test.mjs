@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {migrateKind, suspectName, verifyInstall} from '../lib/cleanup.mjs';
 import {planInstall, writeInstall} from '../lib/install.mjs';
 import {nestedName, rewriteLinks} from '../lib/layout.mjs';
+import {noteFacts, summaryMarker} from '../lib/summary.mjs';
 
 const cli = fileURLToPath(new URL('../bin/install.mjs', import.meta.url));
 const fixture = fileURLToPath(new URL('./fixtures/Tactical Direction.base', import.meta.url));
@@ -110,4 +111,38 @@ test('a write that does not read back as intended is undone and reported', async
   await fs.writeFile(file, plan.next.replace('### Record', '### Recorded'));
   await assert.rejects(verifyInstall(plan), /failed verification \(the file does not hold what was written; the block does not match what its settings render\); it was restored/);
   assert.equal(await read(file), '# Mine\n');
+});
+
+test('every kind folder gets a summary of its notes, rebuilt from their properties, left alone once made yours', async t => {
+  const vault = await tmp(t), root = path.join(vault, 'proj'), notes = path.join(vault, 'Notes');
+  await fs.mkdir(path.join(vault, '.obsidian'), {recursive: true}); await fs.mkdir(root); await fs.mkdir(notes);
+  const n = (status, updated, title, tag) => `---\nstatus: ${status}\ncreated: ${updated}\nupdated: ${updated}\ntags: [${tag}, a/b]\naliases: ["${title}"]\n---\n\n# ${title}\n`;
+  await write(path.join(notes, 'Decisions', 'pool', 'hostMode', 'fencing.md'), n('made', '2026-10-06T10:00:00', 'Fence | by controller', 'decision'));
+  await write(path.join(notes, 'Decisions', 'pool', 'hostMode', 'gens.md'), n('proposed', '2026-10-07T09:00:00', 'Fences carry generations', 'decision'));
+  await write(path.join(notes, 'Decisions', 'auth', 'flow.md'), n('made', '2026-10-05T08:00:00', 'Sign in once', 'decision'));
+  const r = cmd(root, '--notes-dir', notes, '--record', 'decisions,gotchas', '--yes');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Created summary: Decisions\/summary\.md\nCreated summary: Gotchas\/summary\.md/);
+  const summary = await read(path.join(notes, 'Decisions', 'summary.md'));
+  assert.ok(summary.startsWith('---\naliases: ["Decisions & tradeoffs summary"]\ncssclasses: [agent-note]\n---\n' + summaryMarker + '\n'));
+  assert.ok(summary.includes('> [!info|banner] 3 notes, 1 open, last updated 2026-10-07 09:00:00'));
+  assert.ok(summary.indexOf('## auth') < summary.indexOf('## pool'), 'categories in order');
+  assert.ok(summary.includes('| [[Notes/Decisions/pool/hostMode/gens\\|Fences carry generations]] | hostMode | proposed | 2026-10-07 09:00:00 |\n| [[Notes/Decisions/pool/hostMode/fencing\\|Fence \\| by controller]] | hostMode | made |'), 'newest first, pipes escaped');
+  assert.ok((await read(path.join(notes, 'Gotchas', 'summary.md'))).includes('No notes yet.'));
+  assert.ok(!noteFacts(summary).tags.length, 'a summary has no kind tag, so dashboards never count it as a note');
+  assert.equal(cmd(root, '--yes').stdout, `Already installed: ${path.join(root, 'AGENTS.md')}\n`, 'unchanged notes, unchanged summaries');
+  await write(path.join(notes, 'Decisions', 'auth', 'flow.md'), n('superseded', '2026-10-08T08:00:00', 'Sign in once', 'decision'));
+  assert.match(cmd(root, 'update').stdout, /Updated summary: Decisions\/summary\.md/);
+  assert.ok((await read(path.join(notes, 'Decisions', 'summary.md'))).includes('| superseded | 2026-10-08 08:00:00 |'));
+  await fs.writeFile(path.join(notes, 'Decisions', 'summary.md'), '# Mine\n');
+  await write(path.join(notes, 'Decisions', 'auth', 'more.md'), n('made', '2026-10-09T08:00:00', 'More', 'decision'));
+  assert.match(cmd(root, 'update').stdout, /^Already current: /, 'a summary made yours is not something to update');
+  assert.equal(await read(path.join(notes, 'Decisions', 'summary.md')), '# Mine\n');
+});
+
+test('no summary is written while the notes folder does not exist', async t => {
+  const root = await tmp(t);
+  const r = cmd(root, '--yes');
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!/^(Created|Updated) summary/m.test(r.stdout) && !(await exists(path.join(root, 'Agent Notes'))));
 });

@@ -7,6 +7,7 @@ import {defaultCustomSections, defaultRecord, defaultSkip, exclusions, folderFor
 import {baseName, knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
 import {applyCleanup, cleanupEmpty, migrateSelection, planCleanup, verifyInstall} from '../lib/cleanup.mjs';
 import {colorDiffLine, diffStat, diffStyle, unifiedDiff} from '../lib/diff.mjs';
+import {planSummaries, summaryName, writeSummaries} from '../lib/summary.mjs';
 import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, pagerPrompt, run, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
 const npx = 'npx --yes github:andyqioe/auto-note-taker';
@@ -160,6 +161,14 @@ async function confirmWithReview(plan, prompt, extra = []) {
   }
 }
 
+/** Builds every kind's summary.md from its notes and writes the ones that changed; returns what it did. */
+async function refreshSummaries(plan) {
+  const steps = await planSummaries({root: plan.root, notesDir: plan.notesDir, selection: plan.selection});
+  await writeSummaries(steps);
+  return steps.filter(s => s.action !== 'current');
+}
+const summaryLine = (plan, s) => `${s.action === 'create' ? 'Created' : s.action === 'update' ? 'Updated' : 'Kept (edited by you)'} summary: ${path.relative(resolveNotesDir(plan.root, plan.notesDir), s.path).split(path.sep).join('/')}`;
+
 async function direct() {
   const {prior} = await readProject(options.project ?? process.cwd());
   const installed = installedConfig(prior);
@@ -173,8 +182,12 @@ async function direct() {
   if (await writeInstall(plan)) {
     await verifyInstall(plan);
     console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
+    for (const s of await refreshSummaries(plan)) console.log(summaryLine(plan, s));
     printDiff(plan);
-  } else console.log(`Already installed: ${plan.target}`);
+  } else {
+    console.log(`Already installed: ${plan.target}`);
+    for (const s of await refreshSummaries(plan)) console.log(summaryLine(plan, s));
+  }
   if (extras) {
     const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
     if (!vault) console.log('Obsidian extras skipped: the notes folder is not inside an Obsidian vault.');
@@ -245,16 +258,22 @@ async function update() {
   const installed = await installedFor(project);
   const up = await planUpdate(project, installed, selectionFrom(installed.selection));
   const {plan, cleanup, added, changed, removed} = up;
-  if (plan.change === 'current' && cleanupEmpty(cleanup)) { console.log(`Already current: ${plan.target}\nRecording: ${labels(plan.selection)}`); return; }
+  const summaries = (await planSummaries({root: plan.root, notesDir: plan.notesDir, selection: plan.selection})).filter(s => s.action !== 'current');
+  if (plan.change === 'current' && cleanupEmpty(cleanup) && !summaries.some(s => s.action !== 'keep (edited by you)')) {
+    console.log(`Already current: ${plan.target}\nRecording: ${labels(plan.selection)}`);
+    return;
+  }
   const folder = k => `${plan.notesDir.replace(/\/+$/, '')}/${k.folder}`;
   const {summary, diffs} = describeCleanup(up, {dry: dryRun});
   const head = dryRun ? `Dry run, nothing written: ${plan.target}` : plan.change === 'current' ? `Already current: ${plan.target}` : `Updated: ${plan.target}`;
   console.log([head,
     ...added.map(k => `Added: ${k.label} (${folder(k)})`), ...changed.map(k => `Changed: ${k.label} (${folder(k)})`), ...removed.map(k => `Removed: ${k.label}`),
     `Recording: ${labels(plan.selection)}`, ...summary].join('\n'));
+  if (dryRun && summaries.length) console.log(`Would rebuild ${summaryName} in: ${summaries.map(s => path.relative(cleanup.notes, path.dirname(s.path)) || '.').join(', ')}`);
   if (!dryRun) {
     if (await writeInstall(plan)) await verifyInstall(plan);
     await applyCleanup(cleanup);
+    for (const s of await refreshSummaries(plan)) console.log(summaryLine(plan, s));
     for (const s of await refreshDashboard(plan)) console.log(`Obsidian ${s.label}: update ${s.path}`);
     console.log(`Verified: ${path.basename(plan.target)} reads back as written${cleanup.moves.length || cleanup.edits.length ? `; ${cleanup.moves.length} moved and ${cleanup.edits.length} edited notes are in place` : ''}`);
   }
@@ -278,7 +297,8 @@ async function updateWizard() {
       selection = await chooseKinds(selection, {title: 'Record', back: false});
       up = await planUpdate(project, installed, selection);
       const {plan, cleanup, added, changed, removed, migrations} = up;
-      if (plan.change === 'current' && cleanupEmpty(cleanup)) { out(c.dim('   Nothing changed.')); return; }
+      const summaries = (await planSummaries({root: plan.root, notesDir: plan.notesDir, selection: plan.selection})).filter(s => s.action === 'create' || s.action === 'update');
+      if (plan.change === 'current' && cleanupEmpty(cleanup) && !summaries.length) { out(c.dim('   Nothing changed.')); return; }
       const folder = k => displayPath(resolveNotesDir(plan.root, plan.notesDir) + '/' + k.folder, wide());
       const rows = (key, list) => list.flatMap((k, i) => [`${c.dim((i ? '' : key).padEnd(8))}  ${k.label}  ${c.dim('→ ' + folder(k))}`,
         ...(k.custom && (key !== 'remove') ? [`${' '.repeat(8)}  ${c.dim('sections ' + k.sections.join(', '))}`] : [])]);
@@ -290,6 +310,7 @@ async function updateWizard() {
         ...listWrap(selectedKinds(plan.selection).map(k => k.label), wide() + 10).map((line, i) => `${c.dim((i ? '' : 'record').padEnd(8))}  ${line}`),
         ...(cleanup.moves.length || cleanup.edits.length ? [`${c.dim('notes   ')}  move ${count(cleanup.moves.length, 'note')} into folders, rewrite links in ${count(cleanup.edits.length, 'note')}`] : []),
         ...cleanup.removals.map((r, i) => `${c.dim((i ? '' : 'tidy').padEnd(8))}  remove ${path.relative(cleanup.notes, r.path)}${r.kind === 'folder' ? '/' : ''}  ${c.dim('· ' + r.reason)}`),
+        ...(summaries.length || cleanup.moves.length ? [`${c.dim('summary ')}  rebuild ${summaryName} in each kind's folder`] : []),
         changesRow(plan, 'changes '),
       ]}, [...summary, ...diffs]);
       if (!confirmed) { out(c.dim('   Nothing changed.')); return; }
@@ -299,6 +320,7 @@ async function updateWizard() {
   const {plan, cleanup, added, changed, removed} = up;
   if (await writeInstall(plan)) await verifyInstall(plan);
   await applyCleanup(cleanup);
+  const summaries = await refreshSummaries(plan);
   const dashboard = await refreshDashboard(plan);
   out('');
   const room = text => Math.max(24, (process.stdout.columns || 80) - text.length - 6);
@@ -309,6 +331,8 @@ async function updateWizard() {
   if (cleanup.moves.length) out(`${c.green(glyph.check)}  Moved ${cleanup.moves.length} notes into folders`);
   if (cleanup.edits.length) out(`${c.green(glyph.check)}  Rewrote links or tags in ${cleanup.edits.length} notes`);
   for (const r of cleanup.removals) out(`${c.green(glyph.check)}  Removed ${displayPath(r.path, room('Removed'))}`);
+  for (const s of summaries) if (s.action === 'create' || s.action === 'update')
+    out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path, room('Created'))}`);
   for (const s of dashboard) out(`${c.green(glyph.check)}  Updated ${displayPath(s.path, room('Updated'))}`);
   out(`${c.green(glyph.check)}  Verified: everything reads back as written`);
   out('');
@@ -384,12 +408,15 @@ async function wizard() {
   const plan = state.plan;
   if (await writeInstall(plan)) await verifyInstall(plan);
   if (state.extraSteps && state.extras) await writeExtras(state.extraSteps);
+  const summaries = await refreshSummaries(plan);
   out('');
   const verb = {create: 'Created', append: 'Added block to', update: 'Updated block in', current: 'Already current:'}[plan.change];
   const room = text => Math.max(24, (process.stdout.columns || 80) - text.length - 6);
   const stat = plan.change === 'current' ? '' : '  ' + diffStat(changesOf(plan));
   out(`${c.green(glyph.check)}  ${verb} ${displayPath(plan.target, room(verb) - visibleLength(stat))}${stat}`);
   for (const s of state.extras ? state.extraSteps ?? [] : []) if (s.action === 'create' || s.action === 'update')
+    out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path, room('Created'))}`);
+  for (const s of summaries) if (s.action === 'create' || s.action === 'update')
     out(`${c.green(glyph.check)}  ${s.action === 'create' ? 'Created' : 'Updated'} ${displayPath(s.path, room('Created'))}`);
   const styled = state.extras && state.extraSteps?.some(s => s.path.endsWith('.css') && s.action !== 'current');
   if (styled) out(c.dim(`   Reopen the vault in Obsidian if the snippet does not apply right away.`));
