@@ -90,7 +90,7 @@ User operating assumption (not verified by the agent): the homepage is regenerat
 
 Status: implemented 2026-10-05 in `cache/purge.ts`.
 
-- Implementation summary: [2026-10-05-price-purge.md](<storefront/docs/summaries/2026-10-05-price-purge.md>)
+- Implementation summary: [2026-10-05-price-purge.md](<../../storefront/docs/summaries/2026-10-05-price-purge.md>)
 - HTML companion: [2026-10-05-price-purge.html](<storefront/docs/summaries/2026-10-05-price-purge.html>)
 - Paths are relative to the `storefront` project; the project's docs are not in this notes vault.
 

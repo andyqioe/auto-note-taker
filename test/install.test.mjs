@@ -95,7 +95,7 @@ test('update adds a built-in kind and a kind of your own, with its sections and 
  const before=await block(root);
  const r=update(root,'--add-kind','gotchas','--add-kind','To-dos=the user says "add X to todo"','--kind-sections','Task, Done when, Links','--kind-details','also keep To-dos/index.md linking every open to-do');
  assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/Added: Gotchas & lessons \(Agent Notes\/Gotchas\)\nAdded: To-dos \(Agent Notes\/To-dos\)\nRecording: Decisions & tradeoffs, Gotchas & lessons, To-dos\n\n--- AGENTS\.md\n/);assert.match(r.stdout,/^\+### To-dos$/m);
+ assert.match(r.stdout,/Added: Gotchas & lessons \(Agent Notes\/Gotchas\)\nAdded: To-dos \(Agent Notes\/To-dos\)\nRecording: Decisions & tradeoffs, Gotchas & lessons, To-dos\nVerified: AGENTS\.md reads back as written\n\n--- AGENTS\.md\n/);assert.match(r.stdout,/^\+### To-dos$/m);
  const text=await block(root);
  for(const want of ['### Gotchas and lessons','### To-dos','`Agent Notes/To-dos` when: the user says "add X to todo"','`## 1. Task`, `## 2. Done when`, `## 3. Links`.','Also keep To-dos/index.md linking every open to-do.','- Anything about the CI provider','### Ask before writing']) assert.ok(text.includes(want),want);
  assert.ok(!text.includes('## 4. Follow-ups'),'custom sections replace the default ones');
@@ -123,7 +123,8 @@ test('update refuses what it cannot do and leaves AGENTS.md untouched',async t=>
  const root=await project(t),p=path.join(root,'AGENTS.md');
  assert.match(update(root,'--add-kind','gotchas').stderr,/no auto-note-taker block to update; install first/);
  assert.equal(run(root).status,0);const installed=await fs.readFile(p,'utf8');
- for(const [args,error] of [[[],/needs a kind to add/],[['--notes-dir','x'],/only adds or removes kinds/],[['--headless'],/only adds or removes kinds/],
+ assert.match(update(root).stdout,/^Already current: /,'update with nothing named tidies up, and here has nothing to do');
+ for(const [args,error] of [[['--notes-dir','x'],/only adds or removes kinds/],[['--headless'],/only adds or removes kinds/],
   [['--remove-kind','nope'],/"nope" is not recorded here/],[['--kind-sections','A'],/must follow --add-kind "NAME=WHEN"/],
   [['--add-kind','gotchas','--kind-details','x'],/must follow --add-kind "NAME=WHEN"/],[['--add-kind','nonsense'],/built-in kind .* or one of your own/],
   [['--add-kind','X=y','--kind-sections','A, a'],/listed twice/],[['--add-kind','X=y','--kind-sections','A `B`'],/backticks/],

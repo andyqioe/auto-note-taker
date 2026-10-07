@@ -2,7 +2,7 @@
 status: agreed
 created: 2026-10-05T13:27:19
 updated: 2026-10-05T13:38:57
-tags: [tactical-direction, uploader/credentials]
+tags: [tactical-direction, uploader/s3]
 aliases: ["Move S3 uploader credentials from the config file to the instance role"]
 implementation:
 cssclasses: [agent-note]
@@ -18,7 +18,7 @@ cssclasses: [agent-note]
 
 - Project: `ingest-gateway`.
 - The `uploader` config holds static AWS keys (`access_key_id`, `secret_access_key`) next to `bucket: ingest-raw-prod`.
-- The credentials came up while discussing S3 upload timeouts on big files; the tuning side is pending in [[uploader-s3-multipartTuning]].
+- The credentials came up while discussing S3 upload timeouts on big files; the tuning side is pending in [[Projects/storefront/Tactical Direction/uploader/s3/multipartTuning|Hold S3 uploader part size, concurrency and timeout until uplink headroom is measured]].
 
 ## 2. Agent Proposal
 

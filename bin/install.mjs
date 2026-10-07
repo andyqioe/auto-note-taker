@@ -5,6 +5,7 @@ import path from 'node:path';
 import {defaultNotesDir, expandHome, installedConfig, installedNotesDir, notesDirFor, planInstall, readProject, resolveNotesDir, validateNotesDir, writeInstall} from '../lib/install.mjs';
 import {defaultCustomSections, defaultRecord, defaultSkip, exclusions, folderFor, kindById, kinds, maxDetails, normalizeSelection, parseSections, selectedKinds, validateSections, validateText} from '../lib/kinds.mjs';
 import {baseName, knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
+import {applyCleanup, cleanupEmpty, migrateSelection, planCleanup, verifyInstall} from '../lib/cleanup.mjs';
 import {colorDiffLine, diffStat, diffStyle, unifiedDiff} from '../lib/diff.mjs';
 import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, pagerPrompt, run, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
@@ -12,7 +13,7 @@ const npx = 'npx --yes github:andyqioe/auto-note-taker';
 const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--record KINDS] [--skip ITEMS] [--add-kind KIND]...
                        [--add-skip TEXT]... [--obsidian-extras | --no-obsidian-extras] [--headless] [--yes] [--check]
        auto-note-taker update [--project PATH] [--add-kind KIND [--kind-sections LIST] [--kind-details TEXT]]...
-                       [--remove-kind KIND]... [--yes]
+                       [--remove-kind KIND]... [--dry-run] [--yes]
 
 Installs or updates one managed block in AGENTS.md telling agents which moments to record as Obsidian notes,
 and which to leave out, and prints the diff of what it changed. Run in a terminal with no flags to choose
@@ -39,21 +40,25 @@ everything interactively; the confirm screen shows the same diff on d.
   --check                 report whether the block is current, and print the diff an install would make,
                           without writing
 
-update changes only which kinds an existing install records, and keeps its notes folder, exclusions and
-headless setting. In a terminal with no kinds named, it asks which to add or remove.
+update changes which kinds an existing install records, and keeps its notes folder, exclusions and headless
+setting. It also brings an older install up to date: a kind whose name holds its instructions gets a short name,
+flat notes move into <kind>/<category>/<sub-category>/ folders with every link to them rewritten, and files and
+empty folders earlier versions left behind are removed (never a note). In a terminal with no kinds named, it asks
+which to add or remove. Everything it writes is read back and checked.
 
   --add-kind KIND         as above; giving a kind of your own a name it already has replaces its definition
-  --remove-kind KIND      stop recording a kind, by id or name; its notes stay where they are`;
+  --remove-kind KIND      stop recording a kind, by id or name; its notes stay where they are
+  --dry-run               print everything update would change, and change nothing`;
 
 const args = process.argv.slice(2);
 const updating = args[0] === 'update';
 if (updating) args.shift();
 const options = {addKind: [], addRecord: [], removeKind: [], addSkip: []};
-let check = false, yes = false, headless = false, extras;
+let check = false, yes = false, headless = false, dryRun = false, extras;
 const list = v => v === 'none' ? [] : v.split(',').map(x => x.trim()).filter(Boolean);
 const valueFlags = ['--project', '--notes-dir', '--record', '--skip', '--add-kind', '--kind-sections', '--kind-details', '--add-skip', '--remove-kind'];
 // update edits the kinds of an install and nothing else, so flags that would change the rest of it are refused.
-const updateFlags = ['--project', '--add-kind', '--kind-sections', '--kind-details', '--remove-kind', '--yes', '-y', '--help', '-h'];
+const updateFlags = ['--project', '--add-kind', '--kind-sections', '--kind-details', '--remove-kind', '--dry-run', '--yes', '-y', '--help', '-h'];
 function parse() {
   let ownKind = null;
   for (let i = 0; i < args.length; i++) {
@@ -62,6 +67,7 @@ function parse() {
       throw new Error(`update only adds or removes kinds; run the installer without "update" to use ${arg}`);
     if (arg === '--help' || arg === '-h') { console.log(usage); process.exit(0); }
     if (arg === '--check') { check = true; continue; }
+    if (arg === '--dry-run' && updating) { dryRun = true; continue; }
     if (arg === '--yes' || arg === '-y') { yes = true; continue; }
     if (arg === '--headless') { headless = true; continue; }
     if (arg === '--obsidian-extras' || arg === '--no-obsidian-extras') { extras = arg === '--obsidian-extras'; continue; }
@@ -143,13 +149,14 @@ function changesRow(plan, key) {
  * Asks `prompt` until it is answered Yes or No; `d` opens the plan's diff in a scrolling view and comes back here,
  * so the change can be read in full before anything is written.
  */
-async function confirmWithReview(plan, prompt) {
-  const diff = changesOf(plan);
+async function confirmWithReview(plan, prompt, extra = []) {
+  const lines = [...changesOf(plan).lines, ...(extra.length ? ['', ...extra] : [])];
   const rows = Math.max(5, Math.min(30, (process.stdout.rows || 24) - 4));
+  const title = extra.length ? 'Changes' : `Changes to ${path.relative(plan.root, plan.target) || 'AGENTS.md'}`;
   for (;;) {
-    const answer = await run(confirmPrompt({...prompt, review: diff.lines.length ? 'show changes' : ''}));
+    const answer = await run(confirmPrompt({...prompt, review: lines.some(Boolean) ? 'show changes' : ''}));
     if (answer !== 'review') return answer;
-    await run(pagerPrompt({title: `Changes to ${path.relative(plan.root, plan.target) || 'AGENTS.md'}`, lines: diff.lines, style: diffStyle, rows}));
+    await run(pagerPrompt({title, lines: lines.length && !lines[0] ? lines.slice(1) : lines, style: diffStyle, rows}));
   }
 }
 
@@ -164,6 +171,7 @@ async function direct() {
     return;
   }
   if (await writeInstall(plan)) {
+    await verifyInstall(plan);
     console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
     printDiff(plan);
   } else console.log(`Already installed: ${plan.target}`);
@@ -205,20 +213,53 @@ async function refreshDashboard(plan) {
   return steps;
 }
 
+/**
+ * Everything one update does: the block, with any instruction-like kind names migrated, and the cleanup of the
+ * notes that goes with it. Nothing is written; the wizard, a dry run and a real run all start here.
+ */
+async function planUpdate(project, installed, selection) {
+  const migrated = migrateSelection(selection);
+  const plan = await planInstall(project, installed.notesDir, migrated.selection, {headless: installed.headless});
+  const cleanup = await planCleanup({root: plan.root, notesDir: plan.notesDir, before: installed.selection, after: plan.selection, migrations: migrated.migrations});
+  // Kinds are compared after migration, so a renamed kind reads as migrated, not as one removed and one added.
+  return {plan, cleanup, migrations: migrated.migrations, ...kindChanges(migrateSelection(installed.selection).selection, plan.selection)};
+}
+
+/** How a cleanup reads in a report and in the review: paths are shown from the notes folder. */
+function describeCleanup(update, {dry = false} = {}) {
+  const {cleanup, migrations} = update, rel = p => path.relative(cleanup.notes, p).split(path.sep).join('/') || '.';
+  const summary = [
+    ...migrations.map(m => `${dry ? 'Would migrate' : 'Migrated'}: "${m.from.name}" → ${m.to.name}; the rest of the old name now leads its instructions`),
+    ...(cleanup.moves.length ? [`${dry ? 'Would move' : 'Moved'} ${cleanup.moves.length} ${cleanup.moves.length === 1 ? 'note' : 'notes'} into folders:`,
+      ...cleanup.moves.map(m => `  ${rel(m.from)} → ${rel(m.to)}`)] : []),
+    ...(cleanup.edits.length ? [`${dry ? 'Would rewrite' : 'Rewrote'} links or tags in ${cleanup.edits.length} ${cleanup.edits.length === 1 ? 'note' : 'notes'}`] : []),
+    ...cleanup.removals.map(r => `${dry ? 'Would remove' : 'Removed'}: ${rel(r.path)}${r.kind === 'folder' ? '/' : ''} (${r.reason})`),
+    ...cleanup.skipped.map(x => `Kept in place: ${rel(x.path)} (${x.reason})`),
+  ];
+  const diffs = cleanup.edits.flatMap(e => ['', ...unifiedDiff(e.before, e.after, {name: rel(e.path)}).lines]);
+  return {summary, diffs};
+}
+
 async function update() {
   const project = options.project ?? process.cwd();
-  if (!options.addKind.length && !options.addRecord.length && !options.removeKind.length)
-    throw new Error('update needs a kind to add (--add-kind) or remove (--remove-kind), or a terminal to choose one in');
   const installed = await installedFor(project);
-  const plan = await planInstall(project, installed.notesDir, selectionFrom(installed.selection), {headless: installed.headless});
-  if (!(await writeInstall(plan))) { console.log(`Already current: ${plan.target}\nRecording: ${labels(plan.selection)}`); return; }
-  const {added, changed, removed} = kindChanges(installed.selection, plan.selection);
+  const up = await planUpdate(project, installed, selectionFrom(installed.selection));
+  const {plan, cleanup, added, changed, removed} = up;
+  if (plan.change === 'current' && cleanupEmpty(cleanup)) { console.log(`Already current: ${plan.target}\nRecording: ${labels(plan.selection)}`); return; }
   const folder = k => `${plan.notesDir.replace(/\/+$/, '')}/${k.folder}`;
-  console.log([`Updated: ${plan.target}`,
+  const {summary, diffs} = describeCleanup(up, {dry: dryRun});
+  const head = dryRun ? `Dry run, nothing written: ${plan.target}` : plan.change === 'current' ? `Already current: ${plan.target}` : `Updated: ${plan.target}`;
+  console.log([head,
     ...added.map(k => `Added: ${k.label} (${folder(k)})`), ...changed.map(k => `Changed: ${k.label} (${folder(k)})`), ...removed.map(k => `Removed: ${k.label}`),
-    `Recording: ${labels(plan.selection)}`].join('\n'));
-  for (const s of await refreshDashboard(plan)) console.log(`Obsidian ${s.label}: update ${s.path}`);
+    `Recording: ${labels(plan.selection)}`, ...summary].join('\n'));
+  if (!dryRun) {
+    if (await writeInstall(plan)) await verifyInstall(plan);
+    await applyCleanup(cleanup);
+    for (const s of await refreshDashboard(plan)) console.log(`Obsidian ${s.label}: update ${s.path}`);
+    console.log(`Verified: ${path.basename(plan.target)} reads back as written${cleanup.moves.length || cleanup.edits.length ? `; ${cleanup.moves.length} moved and ${cleanup.edits.length} edited notes are in place` : ''}`);
+  }
   printDiff(plan);
+  if (diffs.length) console.log(diffs.map(l => process.stdout.isTTY ? colorDiffLine(l) : l).join('\n'));
 }
 
 async function updateWizard() {
@@ -231,34 +272,46 @@ async function updateWizard() {
   const {root} = await readProject(project);
   out(`${c.green(glyph.done)}  ${c.dim('Project')}  ${displayPath(root, wide() + 18)}`);
   out(`${c.green(glyph.done)}  ${c.dim('Notes folder')}  ${displayPath(resolveNotesDir(root, installed.notesDir), wide() + 13)}`);
-  let selection = installed.selection, plan;
+  let selection = installed.selection, up;
   for (;;) {
     try {
       selection = await chooseKinds(selection, {title: 'Record', back: false});
-      plan = await planInstall(project, installed.notesDir, selection, {headless: installed.headless});
-      const {added, changed, removed} = kindChanges(installed.selection, plan.selection);
-      if (!added.length && !changed.length && !removed.length) { out(c.dim('   Nothing changed.')); return; }
+      up = await planUpdate(project, installed, selection);
+      const {plan, cleanup, added, changed, removed, migrations} = up;
+      if (plan.change === 'current' && cleanupEmpty(cleanup)) { out(c.dim('   Nothing changed.')); return; }
       const folder = k => displayPath(resolveNotesDir(plan.root, plan.notesDir) + '/' + k.folder, wide());
       const rows = (key, list) => list.flatMap((k, i) => [`${c.dim((i ? '' : key).padEnd(8))}  ${k.label}  ${c.dim('→ ' + folder(k))}`,
         ...(k.custom && (key !== 'remove') ? [`${' '.repeat(8)}  ${c.dim('sections ' + k.sections.join(', '))}`] : [])]);
+      const count = (n, one) => `${n} ${n === 1 ? one : one + 's'}`;
+      const {summary, diffs} = describeCleanup(up, {dry: true});
       const confirmed = await confirmWithReview(plan, {title: 'Update?', detail: [
         ...rows('add', added), ...rows('change', changed), ...removed.map((k, i) => `${c.dim((i ? '' : 'remove').padEnd(8))}  ${k.label}  ${c.dim('· its notes stay')}`),
+        ...migrations.map((m, i) => `${c.dim((i ? '' : 'migrate').padEnd(8))}  ${m.to.name}  ${c.dim('← ' + m.from.name)}`),
         ...listWrap(selectedKinds(plan.selection).map(k => k.label), wide() + 10).map((line, i) => `${c.dim((i ? '' : 'record').padEnd(8))}  ${line}`),
+        ...(cleanup.moves.length || cleanup.edits.length ? [`${c.dim('notes   ')}  move ${count(cleanup.moves.length, 'note')} into folders, rewrite links in ${count(cleanup.edits.length, 'note')}`] : []),
+        ...cleanup.removals.map((r, i) => `${c.dim((i ? '' : 'tidy').padEnd(8))}  remove ${path.relative(cleanup.notes, r.path)}${r.kind === 'folder' ? '/' : ''}  ${c.dim('· ' + r.reason)}`),
         changesRow(plan, 'changes '),
-      ]});
+      ]}, [...summary, ...diffs]);
       if (!confirmed) { out(c.dim('   Nothing changed.')); return; }
       break;
     } catch (e) { if (!(e instanceof Back)) throw e; process.stdout.write('\x1b[1A\r\x1b[J'); }
   }
-  await writeInstall(plan);
+  const {plan, cleanup, added, changed, removed} = up;
+  if (await writeInstall(plan)) await verifyInstall(plan);
+  await applyCleanup(cleanup);
   const dashboard = await refreshDashboard(plan);
   out('');
   const room = text => Math.max(24, (process.stdout.columns || 80) - text.length - 6);
-  const stat = '  ' + diffStat(changesOf(plan));
-  out(`${c.green(glyph.check)}  Updated block in ${displayPath(plan.target, room('Updated block in') - visibleLength(stat))}${stat}`);
+  if (plan.change !== 'current') {
+    const stat = '  ' + diffStat(changesOf(plan));
+    out(`${c.green(glyph.check)}  Updated block in ${displayPath(plan.target, room('Updated block in') - visibleLength(stat))}${stat}`);
+  }
+  if (cleanup.moves.length) out(`${c.green(glyph.check)}  Moved ${cleanup.moves.length} notes into folders`);
+  if (cleanup.edits.length) out(`${c.green(glyph.check)}  Rewrote links or tags in ${cleanup.edits.length} notes`);
+  for (const r of cleanup.removals) out(`${c.green(glyph.check)}  Removed ${displayPath(r.path, room('Removed'))}`);
   for (const s of dashboard) out(`${c.green(glyph.check)}  Updated ${displayPath(s.path, room('Updated'))}`);
+  out(`${c.green(glyph.check)}  Verified: everything reads back as written`);
   out('');
-  const {added, changed, removed} = kindChanges(installed.selection, plan.selection);
   printCommand(out, 'Same update without prompts:', [`${npx} update`, `--project ${quote(plan.root)}`,
     ...[...added, ...changed].flatMap(kindFlags), ...removed.map(k => `--remove-kind ${quote(k.custom ? k.label : k.id)}`)]);
   out('');
@@ -329,7 +382,7 @@ async function wizard() {
   if (!state.confirmed) { out(c.dim('   Nothing changed.')); return; }
 
   const plan = state.plan;
-  await writeInstall(plan);
+  if (await writeInstall(plan)) await verifyInstall(plan);
   if (state.extraSteps && state.extras) await writeExtras(state.extraSteps);
   out('');
   const verb = {create: 'Created', append: 'Added block to', update: 'Updated block in', current: 'Already current:'}[plan.change];
@@ -478,7 +531,7 @@ try {
   parse();
   const terminal = process.stdin.isTTY && process.stdout.isTTY && !yes;
   if (updating) {
-    if (terminal && !options.addKind.length && !options.addRecord.length && !options.removeKind.length) await updateWizard();
+    if (terminal && !dryRun && !options.addKind.length && !options.addRecord.length && !options.removeKind.length) await updateWizard();
     else await update();
   } else if (terminal && !check && !(options.project && options['notes-dir'])) await wizard();
   else await direct();

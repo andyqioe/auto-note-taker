@@ -6,7 +6,7 @@ Auto Note Taker fixes that by teaching them to write it down.
 It installs a short set of instructions into your project's `AGENTS.md`.
 You choose what the agent records, from a menu: pivots, hard problems and how they were solved, the decisions it made on its own, your tactical direction, dead ends, gotchas, open questions, or kinds you define yourself.
 You also choose what it must never record, such as routine steps, trivial fixes or anyone's personal details.
-From then on, the agent writes each of those moments as an Obsidian note in its own folder: the point first, the reasoning below it, your exact words preserved where they decided something.
+From then on, the agent writes each of those moments as an Obsidian note, filed by kind and then by topic: the point first, the reasoning below it, your exact words preserved where they decided something.
 Future agents read those notes before acting, so nobody relearns the same lesson twice.
 
 ![A recorded decision in Obsidian: the decision title and a green "Agreed" banner stating the rule](docs/images/note-banner.png)
@@ -240,7 +240,7 @@ Exit codes: `0` on success (and for `--check` when the block is current), `1` on
 
 ## Add or remove kinds later
 
-Once a project is installed, `update` changes which kinds of notes agents record, and nothing else.
+Once a project is installed, `update` changes which kinds of notes agents record, and brings the install up to date (see [Bring an older install up to date](#bring-an-older-install-up-to-date)).
 The notes folder, your exclusions, the styling and the headless setting stay as they are.
 Use it to start recording a built-in kind, to add a kind of your own, to change how one of your kinds is written, or to stop recording a kind.
 
@@ -333,6 +333,7 @@ npx --yes github:andyqioe/auto-note-taker update --remove-kind pivots
 Updated: /Users/you/code/storefront/AGENTS.md
 Added: To-dos (Agent Notes/To-dos)
 Recording: Pivots, Challenges & fixes, To-dos
+Verified: AGENTS.md reads back as written
 ```
 
 ```diff
@@ -366,9 +367,9 @@ Recording: Pivots, Challenges & fixes, To-dos
 +- Sections, in order: `## 1. Task`, `## 2. Context`, `## 3. Done when`, `## 4. Links`.
 +- Status and banner: `current` (`info`, states the point of the note in one or two sentences), `superseded` (`failure`, links the newer note).
 +
- ### Filenames
+ ### Folders and filenames
  
- - Filename: `[Category]-[Sub-category]-[Sub-sub-category].md`, for example `proxy-session-stateHandling.md`. The user's explicit naming convention takes precedence over generic filename style rules for these notes.
+ - Path: `<kind folder>/<category>/<sub-category>/<detail>.md`, three folders at most counting the kind folder, for example `Pivots/proxy/session/stateHandling.md`. A note with no sub-category goes in `<kind folder>/<category>/`.
 ```
 
 Running the same command again prints `Already current:` and changes nothing.
@@ -382,10 +383,31 @@ You can combine several `--add-kind` and `--remove-kind` flags in one run.
 | `--kind-sections LIST` | Sections of the kind of your own just added, comma-separated; at most 10, without backticks or `#`. Default: `Context, What happened, Why it matters, Follow-ups`. |
 | `--kind-details TEXT` | How agents should write the kind of your own just added; one line, at most 600 characters. |
 | `--remove-kind KIND` | Stop recording a kind, by id (`pivots`) or name (`Perf wins`), in any case. |
+| `--dry-run` | Print everything `update` would change, including note moves and link edits, and write nothing. |
 | `--yes`, `-y` | Do not prompt. |
 
 Other flags, such as `--notes-dir` or `--skip`, belong to the full installer.
 `update` refuses them, so it never changes more than you asked.
+
+### Bring an older install up to date
+
+`update` also tidies what older versions left, every time it runs:
+
+- **Flat notes move into topic folders.** A note named `pool-hostMode-fencingDesign.md` directly in its kind's folder moves to `pool/hostMode/fencingDesign.md` under it. Every link to it in the vault is rewritten to the new path: `[[wikilinks]]` (keeping their text), embeds, and Markdown links, absolute or relative. A note whose new place is taken stays where it is, and a name that does not follow the old pattern (`Meeting notes.md`) is left alone.
+- **A kind whose name holds its instructions gets a short name.** A name such as `To-dos - if the user says "add to todo" keep a summary page` becomes `To-dos`, and the rest of the old name becomes the first part of the kind's instructions. Its notes move to the short folder and their tag changes to the short one, so the dashboard finds them.
+- **Leftovers are removed.** The folder of a kind you no longer record is removed when nothing but empty folders is in it, and a `Tactical Direction.base` from an early version is removed when it is still exactly as that version wrote it. A note is never deleted.
+
+Then it reads everything back: the block must parse to the settings it was given and match what they render, and every moved or edited note must be in place with its new text.
+If `AGENTS.md` does not read back as written, it is restored and `update` stops with an error that says what failed.
+
+To see all of this before it happens, add `--dry-run`: it prints every kind change, every note move from old path to new, every removal, the diff of `AGENTS.md` and the diff of every note whose links change, and writes nothing.
+
+```sh
+npx --yes github:andyqioe/auto-note-taker update --dry-run
+npx --yes github:andyqioe/auto-note-taker update --yes
+```
+
+In the wizard, the confirm screen adds a **migrate**, a **notes** and a **tidy** row for these, and `d` shows the same detail.
 
 ### Change a kind of your own
 
@@ -448,11 +470,32 @@ When a topic already has a note, the agent updates it instead of starting anothe
 | **Open questions & assumptions** | `Open Questions/`, `open-question` | Work goes ahead on an unconfirmed assumption, or a question only someone else can settle | Question, Current assumption, Why it matters, Who decides, Answer |
 | *Your own kind* | a folder named after it, a tag made from its name | Your "Record it when…" sentence | Context, What happened, Why it matters, Follow-ups, or the sections you named |
 
+Inside its kind's folder, every note is filed by topic, three folders deep at most:
+
+```text
+Agent Notes/
+  Decisions/
+    pool/
+      hostMode/
+        fencingDesign.md
+  Tactical Direction/
+    proxy/
+      session/
+        stateHandling.md
+    pool/
+      orders/
+        tickToTrade.md
+```
+
+The path is `<kind folder>/<category>/<sub-category>/<detail>.md`; a note with no sub-category sits in `<kind folder>/<category>/`.
+Agents reuse the category and sub-category folders that already exist, in every kind, so one topic has one name everywhere, and the note's nested tag (`pool/hostMode`) matches its folders.
+Because a file name such as `stateHandling.md` can appear in more than one folder, agents link to notes by path: `[[Tactical Direction/proxy/session/stateHandling|Session state stays in the controller]]`, from the vault root when the notes are in an Obsidian vault.
+
 Notes link to each other where one led to another: a dead end to the pivot it caused, a challenge to the decision it forced.
 
 Every note, whatever its kind, follows these rules:
 
-- **Filename:** `[Category]-[Sub-category]-[Sub-sub-category].md`, for example `proxy-session-stateHandling.md`.
+- **Path:** `<kind folder>/<category>/<sub-category>/<detail>.md`, as above, with links by path.
 - **Sections:** the kind's sections, in order. A section with nothing to say says so in one line; agents must not invent content.
 - **Your words:** when your message triggered or decided what a note records, it is quoted word for word in a fenced `text` block. Tactical-direction notes keep the whole exchange, labelled User and Agent, in order.
 A message that itself contains a code block gets a longer fence, so it cannot break the note.
@@ -542,7 +585,7 @@ To turn it on or off by hand: **Settings → Appearance → CSS snippets → tac
 **`.obsidian/types.json`**: `created` and `updated` are set to the date-and-time type, so Obsidian shows them as `10/05/2026, 10:14:07 AM` instead of plain text; the types of your other properties are kept.
 
 **`Agent Notes.base`** in the notes folder: a dashboard of every note of the kinds you record.
-**All by kind** groups every note by its folder, newest first; then one view per kind groups its notes by status; **Open** lists everything still waiting on someone (pending direction, open challenges and questions, proposed decisions, dead ends to revisit).
+**All by kind** groups every note by its kind (read from its tag, since its folders are its topic), newest first; then one view per kind groups its notes by status; **Open** lists everything still waiting on someone (pending direction, open challenges and questions, proposed decisions, dead ends to revisit).
 It is rebuilt when you change what you record.
 
 ![The Bases dashboard grouping five tactical-direction notes by status, newest update first, each with its date and time](docs/images/note-dashboard.png)
@@ -550,6 +593,8 @@ It is rebuilt when you change what you record.
 The installer never overwrites your changes.
 It updates the snippet only while its first line still reads `auto-note-taker: managed snippet`; delete that line to make the file yours.
 It updates the dashboard only while its first line still reads `auto-note-taker: managed dashboard` (same rule), and it leaves `appearance.json` alone if the file is not valid JSON.
+Obsidian rewrites a `.base` file when you change a view in it, and drops that first line when it does, so a dashboard you have edited in Obsidian is treated as yours.
+To get the current dashboard back, delete `Agent Notes.base` and run the installer with `--obsidian-extras`.
 
 ## Update, check and uninstall
 
@@ -557,9 +602,8 @@ It updates the dashboard only while its first line still reads `auto-note-taker:
 It replaces only its own block, so other text in `AGENTS.md` is untouched, and a run with nothing new to write changes no bytes.
 The block stores your choices on one line, so the wizard starts from them (**Keep current** for the folder, your ticks on both checklists) and a run without flags keeps them.
 
-**Upgrading from a version without note kinds.** An earlier block is read as "record tactical direction, straight into the notes folder", so a plain re-run keeps recording exactly what it did, and existing notes stay where they are.
-Tick more kinds to add them: each new kind gets a subfolder of the existing notes folder.
-The old `Tactical Direction.base` dashboard is left as it was; the new one is `Agent Notes.base`.
+**Upgrading from an older version.** Run `update` (see [Bring an older install up to date](#bring-an-older-install-up-to-date)): it moves flat notes into topic folders, fixes kinds whose name holds their instructions, and removes the files and empty folders older versions left behind.
+A block from before note kinds existed is read as "record tactical direction, straight into the notes folder", so it keeps recording exactly what it did.
 
 **Check.** `--check` exits `0` when the block matches this version and `1` when it is missing or out of date, without writing anything.
 When it is out of date, it also prints the diff an install would make.
@@ -600,6 +644,8 @@ docs/demo-notes/                     the sample notes those screenshots show
 lib/install.mjs                      renders, plans and writes the managed block, and reads back its saved choice
 lib/diff.mjs                         the line diff every run shows of AGENTS.md
 lib/kinds.mjs                        the note kinds and exclusions, and selection validation
+lib/layout.mjs                       moves flat notes into topic folders and rewrites the links to them
+lib/cleanup.mjs                      what update tidies (kind names, leftovers) and the read-back check of every write
 lib/obsidian.mjs                     vault discovery, snippet, and the dashboard generated from the chosen kinds
 lib/ui.mjs                           dependency-free terminal prompts, including the checklist
 context/AGENTS.md                    the shared instructions that get installed

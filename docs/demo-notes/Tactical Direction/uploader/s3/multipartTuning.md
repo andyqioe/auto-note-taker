@@ -2,7 +2,7 @@
 status: pending
 created: 2026-10-05T11:02:41
 updated: 2026-10-05T11:14:19
-tags: [tactical-direction, uploader/multipart]
+tags: [tactical-direction, uploader/s3]
 aliases: ["Hold S3 uploader part size, concurrency and timeout until uplink headroom is measured"]
 implementation:
 cssclasses: [agent-note]
@@ -22,7 +22,7 @@ cssclasses: [agent-note]
 - Operating constraint stated by the user: the gateway boxes share a 1 Gbps uplink with the API traffic.
 - User observation (not measured by the agent): latency spikes appear when uploads saturate that uplink.
 - Not yet established: the root cause of the timeouts and the available uplink headroom.
-- The credentials part of the same exchange is agreed separately in [[uploader-s3-credentials]].
+- The credentials part of the same exchange is agreed separately in [[Projects/storefront/Tactical Direction/uploader/s3/credentials|Move S3 uploader credentials from the config file to the instance role]].
 
 ## 2. Agent Proposal
 
@@ -90,7 +90,7 @@ Secrets in the original messages are redacted.
 | `part_size_mb` | 64 | Unchanged at 5, pending | User picks it after measuring uplink headroom. |
 | `concurrency` | 8 | Not added, pending | 8 parallel parts risk saturating the shared 1 Gbps uplink and spiking API latency. |
 | `timeout_s` | 120 | Unchanged at 30, pending | User said not to touch the uploader settings yet. |
-| Credentials | Move to instance role | Accepted | See [[uploader-s3-credentials]]. |
+| Credentials | Move to instance role | Accepted | See [[Projects/storefront/Tactical Direction/uploader/s3/credentials\|Move S3 uploader credentials from the config file to the instance role]]. |
 
 The agent accepted the hold without counter-argument.
 No numbers have been agreed.
