@@ -113,6 +113,7 @@ function selectionFrom(prior) {
     folders: base.folders,
     customKinds: [...(options.record ? [] : base.customKinds).filter(k => !added.has(lower(k.name)) && !removed({id: '', label: k.name})), ...options.addKind],
     skip: options.skip ?? base.skip, customSkips: [...(options.skip ? [] : base.customSkips), ...options.addSkip],
+    styles: base.styles, ownStyle: base.ownStyle, language: base.language,
   });
 }
 function labels(selection) { return selectedKinds(selection).map(k => k.label).join(', '); }
