@@ -6,6 +6,7 @@ Auto Note Taker fixes that by teaching them to write it down.
 It installs a short set of instructions into your project's `AGENTS.md`.
 You choose what the agent records, from a menu: pivots, hard problems and how they were solved, the decisions it made on its own, your tactical direction, dead ends, gotchas, open questions, or kinds you define yourself.
 You also choose what it must never record, such as routine steps, trivial fixes or anyone's personal details.
+If you want, you choose how the notes read: a writing standard such as ASD-STE100 (Simplified Technical English), Plain language, BLUF or Google developer style, and the language the notes are written in.
 From then on, the agent writes each of those moments as an Obsidian note, filed by kind and then by topic: the point first, the reasoning below it, your exact words preserved where they decided something.
 Future agents read those notes before acting, so nobody relearns the same lesson twice.
 
@@ -25,6 +26,7 @@ The instructions are a plain prompt, not a skill or plugin, so any agent that re
 - [Review the diff](#review-the-diff)
 - [What agents record](#what-agents-record)
 - [What a note looks like](#what-a-note-looks-like)
+- [Writing styles and language](#writing-styles-and-language)
 - [Obsidian styling and dashboard](#obsidian-styling-and-dashboard)
 - [Update, check and uninstall](#update-check-and-uninstall)
 - [Troubleshooting](#troubleshooting)
@@ -63,7 +65,7 @@ cd ~/code/storefront
 npx --yes github:andyqioe/auto-note-taker
 ```
 
-Pick the notes folder, tick what to record and what never to record, accept the styling if the folder is in an Obsidian vault, and confirm.
+Pick the notes folder, tick what to record and what never to record, pick a writing style and a note language if you want them, accept the styling if the folder is in an Obsidian vault, and confirm.
 That is the whole setup.
 
 To add or remove kinds later, run `npx --yes github:andyqioe/auto-note-taker update` from the same project (see [Add or remove kinds later](#add-or-remove-kinds-later)).
@@ -81,7 +83,7 @@ Every screen works the same way:
 |---|---|
 | `↑` `↓` (or `j` `k`) | Move between options |
 | `1` to `9` | Jump straight to an option |
-| `Space` | Tick or untick, on the two checklists |
+| `Space` | Tick or untick, on the checklists |
 | `Enter` | Choose, or confirm a checklist |
 | `Esc` | Go back one screen |
 | `Ctrl+C` | Quit without changing anything |
@@ -163,7 +165,34 @@ The first four start ticked:
 **+ Add your own rule…** adds a line in your words, such as "anything about the CI provider".
 Secrets are always redacted, whatever you tick.
 
-### 7. Decide on styling
+### 7. Choose a writing style
+
+![The Writing style checklist: the sentence an agent writes without a style, then ASD-STE100, Plain language, BLUF and Google developer style, each with the same sentence rewritten in that style under it; ASD-STE100 and BLUF are ticked](docs/images/wizard-style.png)
+
+A checklist of writing standards for the prose agents write in a note.
+Under each one, the same fact is written in that style, and the line above the list shows it without a style, so you can compare them before you choose.
+Nothing is ticked by default: without a style, agents follow only the shared writing rules (present tense, short sentences, one idea per bullet).
+You can tick more than one; where two styles disagree, agents follow the stricter rule.
+**ASD-STE100** and **BLUF** work well together: one shapes each sentence, the other puts the bottom line first.
+
+**+ Describe your own style…** adds a style in your words, such as "keep each note under one screen".
+It adds to any style you ticked.
+
+See [Writing styles and language](#writing-styles-and-language) for what each style asks of the agent.
+
+### 8. Choose the note language
+
+![The Note language menu: Match the user, English (highlighted), and Type a language](docs/images/wizard-language.png)
+
+| Option | Notes are written in |
+|---|---|
+| **Match the user** | The language you write to the agent in. This is the default. |
+| **English** | English, whatever language you write in. |
+| **Type a language…** | Any other language, such as `Deutsch` or `Português (Brasil)`. |
+
+Your verbatim messages always stay in the language you wrote them in, and the section headings stay as each kind defines them.
+
+### 9. Decide on styling
 
 ![The styling step, listing the snippet, the appearance setting, the Agent Notes.base dashboard and the property types it will add](docs/images/wizard-styling.png)
 
@@ -171,27 +200,27 @@ If the notes folder is inside an Obsidian vault, the wizard offers to add a styl
 See [Obsidian styling and dashboard](#obsidian-styling-and-dashboard) for what they do.
 Choose **No** to keep the vault untouched; notes still render with stock Obsidian colors.
 
-### 8. Confirm
+### 10. Confirm
 
-![The Install? screen: the instructions file, the notes folder, the four kinds to record with their folders, the five exclusions wrapped over two lines, and the change to AGENTS.md as +126 lines](docs/images/wizard-confirm.png)
+![The Install? screen: the instructions file, the notes folder, the four kinds to record with their folders, the styles ASD-STE100 and BLUF, the language English, the five exclusions wrapped over two lines, and the change to AGENTS.md as +167 lines](docs/images/wizard-confirm.png)
 
-The last screen shows the instructions file, whether the block will be created, added or updated, the notes folder, the kinds to record with their folders, and what will never be recorded.
+The last screen shows the instructions file, whether the block will be created, added or updated, the notes folder, the kinds to record with their folders, the writing style and language, and what will never be recorded.
 The **changes** row sizes the edit to `AGENTS.md` in lines added and removed.
 Press `d` to read the exact diff before deciding (see [Review the diff](#review-the-diff)).
 Nothing is written before you choose **Yes**.
 `Esc` goes back a step at a time, keeping what you ticked.
 
-### 9. Done
+### 11. Done
 
-![The finished install, listing every file written and the same install as a command, with --record, --add-kind, --skip and --add-skip flags](docs/images/wizard-done.png)
+![The finished install, listing every file written and the same install as a command, with --record, --add-kind, --skip, --add-skip, --style and --language flags](docs/images/wizard-done.png)
 
-The wizard lists every file it wrote, with the lines added and removed in `AGENTS.md`, and prints the same install as a command, with your kinds and exclusions as flags, that you can paste into a script, a README or another machine.
+The wizard lists every file it wrote, with the lines added and removed in `AGENTS.md`, and prints the same install as a command, with your kinds, exclusions, styles and language as flags, that you can paste into a script, a README or another machine.
 Paths under your home folder print as `"$HOME/…"` so the command works for teammates too.
 
 ## Install without prompts
 
 Pass both paths, or add `--yes` to accept defaults for anything missing.
-Without `--record` and `--skip`, a project keeps the choice it made last time (a first install uses the defaults).
+Without `--record`, `--skip`, `--style` and `--language`, a project keeps the choice it made last time (a first install uses the defaults).
 The installer also never prompts when stdin or stdout is not a terminal (CI, pipes) or with `--check`.
 
 ```sh
@@ -207,6 +236,9 @@ npx --yes github:andyqioe/auto-note-taker \
   --skip routine,trivial-fixes,agent-mechanics,personal \
   --add-skip 'anything about the CI provider' \
   --obsidian-extras
+
+# Notes in Simplified Technical English with the bottom line first, always in English
+npx --yes github:andyqioe/auto-note-taker --project . --yes --style ste,bluf --language English
 
 # Agents that run unattended (CI, scheduled jobs) write notes without asking
 npx --yes github:andyqioe/auto-note-taker --project . --yes --headless
@@ -225,6 +257,10 @@ npx --yes github:andyqioe/auto-note-taker#COMMIT_SHA --project . --yes
 | `--kind-details TEXT` | How agents should write the kind of your own just added, in your words, for example an index note to keep. It overrides that kind's layout, never your exclusions. |
 | `--skip ITEMS` | Comma-separated things never to record, or `none`: `routine`, `trivial-fixes`, `agent-mechanics`, `personal`, `brainstorm`, `restated-docs`. Default: the last choice, else the first four. |
 | `--add-skip TEXT` | Also never record this, in your words; repeat for several. |
+| `--style STYLES` | Comma-separated writing styles, or `none`: `ste` (ASD-STE100), `plain` (Plain language), `bluf` (BLUF), `google` (Google developer style). Default: the last choice, else none. |
+| `--own-style TEXT` | A writing style in your words; one line, at most 600 characters. It adds to any `--style`. |
+| `--no-own-style` | Drop the style in your own words. |
+| `--language NAME` | Write notes in this language, such as `English`, or `match` to write in the language the user writes in. Default: the last choice, else `match`. |
 | `--obsidian-extras` | Also install the styling snippet and dashboard, if the notes folder is inside a vault. |
 | `--no-obsidian-extras` | Never offer or install them. |
 | `--headless` | Let agents write notes without asking. By default the block tells agents to ask a Yes/No question before each note, and to write nothing when no one can answer. It is never remembered: pass it on every run that should stay headless, `--check` included. |
@@ -240,9 +276,9 @@ Exit codes: `0` on success (and for `--check` when the block is current), `1` on
 
 ## Add or remove kinds later
 
-Once a project is installed, `update` changes which kinds of notes agents record, and brings the install up to date (see [Bring an older install up to date](#bring-an-older-install-up-to-date)).
+Once a project is installed, `update` changes which kinds of notes agents record, their writing style and their language, and brings the install up to date (see [Bring an older install up to date](#bring-an-older-install-up-to-date)).
 The notes folder, your exclusions, the styling and the headless setting stay as they are.
-Use it to start recording a built-in kind, to add a kind of your own, to change how one of your kinds is written, or to stop recording a kind.
+Use it to start recording a built-in kind, to add a kind of your own, to change how one of your kinds is written, to stop recording a kind, or to change how notes read.
 
 ### 1. Start the update
 
@@ -269,6 +305,10 @@ The wizard shows the project and notes folder it keeps, then the Record checklis
 Press `Enter` when the ticks are right.
 At least one kind must stay ticked.
 
+Next come the [Writing style](#7-choose-a-writing-style) and [Note language](#8-choose-the-note-language) screens of the install, set to what the project has now.
+Press `Enter` on each to keep it, or change it there.
+`Esc` on any screen, the confirm screen included, goes back one screen.
+
 ### 3. Describe a kind of your own
 
 The wizard asks four questions, one at a time:
@@ -292,7 +332,7 @@ Press `Esc` on any question to go back to the checklist without adding it.
 
 ![The confirmation: To-dos will be added with its folder and sections, followed by the full list of kinds that will be recorded, and Yes selected](docs/images/wizard-update.png)
 
-The last screen lists what changes: each kind to **add** with its folder and sections, each kind to **remove**, the full list you will **record** afterwards, and the size of the edit to `AGENTS.md`.
+The last screen lists what changes: each kind to **add** with its folder and sections, each kind to **remove**, the full list you will **record** afterwards, a new **style** or **language** when you changed one, and the size of the edit to `AGENTS.md`.
 Press `d` to read the exact diff first (see [Review the diff](#review-the-diff)).
 Choose **Yes** to write it, or **No** to leave everything as it was.
 If nothing changed, the wizard says so and writes nothing.
@@ -325,6 +365,9 @@ npx --yes github:andyqioe/auto-note-taker update \
 
 # Stop recording a kind; its notes stay where they are
 npx --yes github:andyqioe/auto-note-taker update --remove-kind pivots
+
+# Write notes in Plain language from now on, in the language the user writes in
+npx --yes github:andyqioe/auto-note-taker update --style plain --language match
 ```
 
 `update` prints what it did, then the diff of `AGENTS.md`:
@@ -383,6 +426,7 @@ You can combine several `--add-kind` and `--remove-kind` flags in one run.
 | `--kind-sections LIST` | Sections of the kind of your own just added, comma-separated; at most 10, without backticks or `#`. Default: `Context, What happened, Why it matters, Follow-ups`. |
 | `--kind-details TEXT` | How agents should write the kind of your own just added; one line, at most 600 characters. |
 | `--remove-kind KIND` | Stop recording a kind, by id (`pivots`) or name (`Perf wins`), in any case. |
+| `--style`, `--own-style`, `--no-own-style`, `--language` | Change the writing style or the language, as in [Install without prompts](#install-without-prompts). Notes already written keep their wording. |
 | `--dry-run` | Print everything `update` would change, including note moves and link edits, and write nothing. |
 | `--yes`, `-y` | Do not prompt. |
 
@@ -585,7 +629,73 @@ A small `mermaid` diagram appears only when the agreement is a flow or a state m
 
 ![The final agreement: eight numbered rules in a green callout, then open follow-ups in a blue one](docs/images/note-final.png)
 
-**Writing.** Present tense, short sentences, one idea per bullet, your own terms for project concepts, and prose in the language you write in.
+**Writing.** Present tense, short sentences, one idea per bullet, your own terms for project concepts, and prose in the language you write in, unless the install names a language.
+A [writing style](#writing-styles-and-language) adds its own rules on top.
+
+## Writing styles and language
+
+A writing style is a standard for the prose agents write in a note: the title, the banner, the section text, list items and table cells.
+The install adds a **Writing style** section to the block with the rules of each style you chose, in the installer's own words.
+A style never changes your verbatim messages, code, identifiers, file and folder names, property values or the required section headings.
+
+| Style | What it asks for | The same fact, in that style |
+|---|---|---|
+| *No style* | The shared writing rules only | Retries were piling up because the lock outlived the worker; it now expires with the worker's lease. |
+| **ASD-STE100** (`ste`) | Simplified Technical English: one word for one meaning, the active voice, simple tenses, no "-ing" verbs, 25 words or fewer a sentence (20 for an instruction), six sentences or fewer a paragraph | The job lock now expires with the lease of the worker. A worker that crashes does not block its retries. |
+| **Plain language** (`plain`) | ISO 24495-1: the reader first, everyday words, the active voice, sentences under 20 words and none over 30, terms defined once | When a worker crashed, its lock stayed, so retries piled up. Now the lock ends when the worker's lease ends. |
+| **BLUF** (`bluf`) | Bottom line up front, from Army regulation AR 25-50: the banner states the outcome or the action the note asks for, and each section opens with its main point | Crashed workers no longer block retries. The lock outlived the worker, so it now expires with the lease. |
+| **Google developer style** (`google`) | The Google developer documentation style guide: present tense, the active voice, "you", sentence-case headings, code font, no "please", "simply" or Latin abbreviations | If a worker crashes, its retries now run, because the job lock expires with the worker's lease. |
+| *Your own* | Your sentence, followed as written | |
+
+You can choose several.
+Where two of them disagree, agents follow the stricter rule.
+The rules of ASD-STE100 and Google developer style are for English; when a note is in another language, agents follow their intent.
+
+The **note language** decides which language agents write notes in.
+By default they write in the language you write in; an install can name one instead, such as English.
+Your verbatim messages always stay in the language you wrote them in.
+
+### Check notes against a style
+
+`lint` reads notes and prints each sentence that breaks a rule of the installed styles that a script can check.
+It changes nothing.
+
+```sh
+npx --yes github:andyqioe/auto-note-taker lint                     # every note in the notes folder
+npx --yes github:andyqioe/auto-note-taker lint "Agent Notes/Challenges/queue/retry/lockLease.md"
+npx --yes github:andyqioe/auto-note-taker lint --style plain        # against another style
+```
+
+```text
+Agent Notes/Challenges/queue/retry/lockLease.md: 3 warnings in 5 sentences
+  L18 ing: "piling": use a verb or a noun, not an -ing form (keep it if it is a technical name) - "Retries were piling up because the lock outlived the worker."
+  L23 passive: "was released": name who does it, in the active voice - "The lock was released only by the worker itself; a worker that crashed never released it."
+  L23 semicolon: split the sentence at the semicolon - "The lock was released only by the worker itself; a worker that crashed never released it."
+3 warnings in 1 note (ASD-STE100, BLUF). A warning is a question: fix the sentence, or keep it when the rule does not apply.
+```
+
+When you choose a style, the block tells agents to run `lint` on each note they write and to fix each warning, or keep the sentence when the rule does not apply.
+
+| Style | What `lint` checks |
+|---|---|
+| ASD-STE100 | Sentence length, the passive voice, perfect tenses, hedges ("might", "should"), "-ing" verbs, phrasal verbs, long words, semicolons, two instructions in one sentence, paragraph length |
+| Plain language | Sentence length (30 words), the passive voice, long words, paragraph length |
+| BLUF | The banner callout comes first after the title; paragraph length |
+| Google developer style | Future tense ("will"), the passive voice, "please", "simply", "easily", "obviously", Latin abbreviations, "and/or" |
+| Your own | Nothing: a script cannot read your sentence |
+
+`lint` skips the properties, headings, code, tables, callout titles and every `quote` callout, so it never asks an agent to change your words.
+It cannot judge meaning, so a warning is a question, and a clean report does not prove the style is followed.
+A technical name or an actor that does not matter can be a correct exception.
+
+| Flag | Meaning |
+|---|---|
+| `NOTE...` | The notes to check. Default: every note in the installed notes folder, without the `summary.md` pages. |
+| `--project PATH` | The project whose install says which styles and notes folder to use. Default: the current directory. |
+| `--style STYLES` | Check against these styles instead of the installed ones. |
+| `--strict` | Exit `1` when there is a warning, for CI. |
+| `--all` | List every warning, not the first 20 of each note. |
+| `--format json` | Print one object a note: `{file, sentences, warnings}`, each warning with its `rule`, `line`, `detail` and `sentence`. |
 
 ## Obsidian styling and dashboard
 
@@ -619,9 +729,9 @@ To get the current dashboard back, delete `Agent Notes.base` and run the install
 
 ## Update, check and uninstall
 
-**Update.** Run the installer again, or use [`update`](#add-or-remove-kinds-later) to add or remove kinds only.
+**Update.** Run the installer again, or use [`update`](#add-or-remove-kinds-later) to change only the kinds, the writing style or the language.
 It replaces only its own block, so other text in `AGENTS.md` is untouched, and a run with nothing new to write changes no bytes.
-The block stores your choices on one line, so the wizard starts from them (**Keep current** for the folder, your ticks on both checklists) and a run without flags keeps them.
+The block stores your choices on one line, so the wizard starts from them (**Keep current** for the folder, your ticks on every checklist, your language) and a run without flags keeps them.
 
 **Upgrading from an older version.** Run `update` (see [Bring an older install up to date](#bring-an-older-install-up-to-date)): it moves flat notes into topic folders, fixes kinds whose name holds their instructions, and removes the files and empty folders older versions left behind.
 A block from before note kinds existed is read as "record tactical direction, straight into the notes folder", so it keeps recording exactly what it did.
@@ -649,8 +759,10 @@ If you added the styling, also delete `.obsidian/snippets/tactical-direction.css
 | The dashboard shows nothing | Bases needs Obsidian 1.9 or newer with the core Bases plugin on, and notes need their kind's tag (`pivot`, `challenge`, ...). |
 | An agent records something you excluded, or skips a kind you chose | Run the installer again and check both checklists; `--check` tells you whether the block is current. For your own kinds and rules, a more concrete sentence helps ("a change with before and after timings" rather than "performance stuff"). |
 | `has no auto-note-taker block to update` | `update` only changes an existing install. Run the installer first. |
-| `update only adds or removes kinds` | The flag changes something other than kinds. Run the installer without `update` instead. |
-| `unknown note kind` or `unknown exclusion` | A typo in `--record` or `--skip`. The error lists the valid names. |
+| `update only changes kinds, styles and the language` | The flag changes something else, such as the notes folder. Run the installer without `update` instead. |
+| `unknown note kind`, `unknown exclusion` or `unknown style` | A typo in `--record`, `--skip` or `--style`. The error lists the valid names. |
+| `no writing style to check against` | `lint` found no style in the install. Choose one with `update --style`, or pass `--style` to `lint`. |
+| Notes ignore the chosen style | Agents follow the block from their next session. Check that `AGENTS.md` has a **Writing style** section, and run `lint` to see which sentences break it. |
 | `AGENTS.md points outside the project` | `AGENTS.md` is a symlink to another project. Install in the project that owns the file. |
 | `Malformed or duplicate managed block` | `AGENTS.md` has a `BEGIN` marker without its `END`, or two blocks. Fix the markers by hand; the installer changes nothing until then. |
 | `Project instructions changed during installation` | Something else edited `AGENTS.md` at the same moment. Run again. |
@@ -665,6 +777,9 @@ docs/demo-notes/                     the sample notes those screenshots show
 lib/install.mjs                      renders, plans and writes the managed block, and reads back its saved choice
 lib/diff.mjs                         the line diff every run shows of AGENTS.md
 lib/kinds.mjs                        the note kinds and exclusions, and selection validation
+lib/styles.mjs                       the writing styles, their wizard examples and what lint checks for each
+lib/ste.mjs                          the checker behind lint: reads a note's own prose and applies the style rules
+lib/lint.mjs                         the lint command: which notes, which styles, and the report
 lib/layout.mjs                       moves flat notes into topic folders and rewrites the links to them
 lib/cleanup.mjs                      what update tidies (kind names, leftovers) and the read-back check of every write
 lib/summary.mjs                      each kind's summary.md, built from its notes' properties
@@ -673,6 +788,7 @@ lib/ui.mjs                           dependency-free terminal prompts, including
 context/AGENTS.md                    the shared instructions that get installed
 context/ask.md                       the ask-before-writing rule, left out by --headless
 context/kinds/                       one file of instructions per note kind (custom.md for your own)
+context/styles/                      one file of rules per writing style
 context/obsidian/                    the styling snippet
 test/                                node:test suites
 ```
