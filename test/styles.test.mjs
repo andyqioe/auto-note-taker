@@ -105,3 +105,27 @@ test('a re-run and an update keep the installed styles and language', async t =>
   const {selection} = installedConfig(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8'));
   assert.deepEqual([selection.record, selection.styles, selection.language], [['pivots', 'challenges', 'decisions'], ['bluf'], 'English']);
 });
+
+test('style flags install, change and clear styles, and update accepts them', async t => {
+  const {spawnSync} = await import('node:child_process');
+  const os = await import('node:os'), path = await import('node:path');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'styles-'));
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  const cli = new URL('../bin/install.mjs', import.meta.url).pathname;
+  const run = (...args) => spawnSync(process.execPath, [cli, ...args, '--project', root], {encoding: 'utf8'});
+  const read = async () => installedConfig(await fs.readFile(path.join(root, 'AGENTS.md'), 'utf8')).selection;
+  let r = run('--style', 'ste,bluf', '--own-style', 'keep each note under one screen', '--language', 'English');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Writing style: ASD-STE100, BLUF, your own\nLanguage: English$/m);
+  assert.deepEqual(await read().then(s => [s.styles, s.ownStyle, s.language]), [['ste', 'bluf'], 'keep each note under one screen', 'English']);
+  assert.equal(run('--check').status, 0, 'a check without flags compares against the installed styles');
+  assert.equal(run('--check', '--style', 'none').status, 1);
+  r = run('update', '--style', 'plain', '--no-own-style', '--language', 'match');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Writing style: Plain language\nLanguage: the language the user writes in$/m);
+  assert.deepEqual(await read().then(s => [s.styles, s.ownStyle, s.language]), [['plain'], '', '']);
+  r = run('update', '--style', 'apa');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /unknown style apa; choose from ste, plain, bluf, google/);
+  assert.match(run('--language', 'a/b').stderr, /letters, spaces, hyphens and parentheses/);
+});
