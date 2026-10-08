@@ -9,6 +9,7 @@ import {baseName, knownVaults, planExtras, vaultRootOf, writeExtras} from '../li
 import {applyCleanup, cleanupEmpty, migrateSelection, planCleanup, verifyInstall} from '../lib/cleanup.mjs';
 import {colorDiffLine, diffStat, diffStyle, unifiedDiff} from '../lib/diff.mjs';
 import {planSummaries, summaryName, writeSummaries} from '../lib/summary.mjs';
+import {lintLines, planLint, runLint} from '../lib/lint.mjs';
 import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, pagerPrompt, run, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
 const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--record KINDS] [--skip ITEMS] [--add-kind KIND]...
@@ -17,6 +18,7 @@ const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--rec
        auto-note-taker update [--project PATH] [--add-kind KIND [--kind-sections LIST] [--kind-details TEXT]]...
                        [--remove-kind KIND]... [--style STYLES] [--own-style TEXT | --no-own-style] [--language NAME]
                        [--dry-run] [--yes]
+       auto-note-taker lint [--project PATH] [--style STYLES] [--strict] [--all] [--format json] [NOTE...]
 
 Installs or updates one managed block in AGENTS.md telling agents which moments to record as Obsidian notes,
 and which to leave out, and prints the diff of what it changed. Run in a terminal with no flags to choose
@@ -58,11 +60,21 @@ which to add or remove. Everything it writes is read back and checked.
   --add-kind KIND         as above; giving a kind of your own a name it already has replaces its definition
   --remove-kind KIND      stop recording a kind, by id or name; its notes stay where they are
   --style, --own-style, --no-own-style, --language   as above
-  --dry-run               print everything update would change, and change nothing`;
+  --dry-run               print everything update would change, and change nothing
+
+lint checks notes against the writing styles the install chose, with the rules a script can check: sentence
+length, the passive voice, tenses, word lists, semicolons and, for BLUF, the banner. It skips front matter, code,
+headings, tables and verbatim quotes, and it changes nothing. A warning is a question, not an error.
+
+  NOTE...                 the notes to check (default: every note in the installed notes folder)
+  --style STYLES          check against these styles instead of the installed ones
+  --strict                exit 1 when there is a warning
+  --all                   list every warning, not the first 20 of each note
+  --format json           print one object per note: {file, sentences, warnings}`;
 
 const args = process.argv.slice(2);
-const updating = args[0] === 'update';
-if (updating) args.shift();
+const updating = args[0] === 'update', linting = args[0] === 'lint';
+if (updating || linting) args.shift();
 const options = {addKind: [], addRecord: [], removeKind: [], addSkip: []};
 let check = false, yes = false, headless = false, dryRun = false, extras;
 // Styles and the language are undefined until a flag sets them, so a run without the flags keeps the installed choice.
@@ -647,15 +659,42 @@ async function confirmInstall(state) {
   ]});
 }
 
+/** lint takes its own few flags and the notes to check; it never prompts and never writes. */
+async function lint() {
+  const opts = {files: []};
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--help' || arg === '-h') { console.log(usage); return; }
+    if (arg === '--strict' || arg === '--all') { opts[arg.slice(2)] = true; continue; }
+    if (['--project', '--style', '--format'].includes(arg)) {
+      if (args[i + 1] === undefined || args[i + 1].startsWith('--')) throw new Error(`${arg} needs a value`);
+      opts[arg.slice(2)] = args[++i];
+      continue;
+    }
+    if (arg.startsWith('-')) throw new Error(`Invalid argument: ${arg}`);
+    opts.files.push(arg);
+  }
+  if (opts.format !== undefined && opts.format !== 'json') throw new Error('--format takes json');
+  const plan = await planLint({project: opts.project ?? process.cwd(), style: opts.style === undefined ? undefined : list(opts.style), files: opts.files});
+  const reports = await runLint(plan);
+  if (opts.format === 'json') console.log(JSON.stringify(reports.map(r => ({...r, file: path.relative(plan.root, r.file) || r.file})), null, 1));
+  else console.log(lintLines(reports, {root: plan.root, styles: plan.styles, limit: opts.all ? Infinity : 20}).join('\n'));
+  if (opts.strict && reports.some(r => r.warnings.length)) process.exitCode = 1;
+}
+
 // Runs last, so every helper above is defined before a prompt can call it.
 try {
-  parse();
-  const terminal = process.stdin.isTTY && process.stdout.isTTY && !yes;
-  if (updating) {
-    if (terminal && !dryRun && !options.addKind.length && !options.addRecord.length && !options.removeKind.length) await updateWizard();
-    else await update();
-  } else if (terminal && !check && !(options.project && options['notes-dir'])) await wizard();
-  else await direct();
+  if (linting) await lint();
+  else {
+    parse();
+    const terminal = process.stdin.isTTY && process.stdout.isTTY && !yes;
+    if (updating) {
+      if (terminal && !dryRun && !options.addKind.length && !options.addRecord.length && !options.removeKind.length
+        && options.style === undefined && options.ownStyle === undefined && options.language === undefined) await updateWizard();
+      else await update();
+    } else if (terminal && !check && !(options.project && options['notes-dir'])) await wizard();
+    else await direct();
+  }
 } catch (error) {
   if (error instanceof Cancelled) { process.exitCode = 130; }
   else { console.error(`auto-note-taker: ${error.message}`); process.exitCode = 1; }
