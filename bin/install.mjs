@@ -2,19 +2,23 @@
 import {existsSync, statSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {defaultNotesDir, expandHome, installedConfig, installedNotesDir, notesDirFor, planInstall, readProject, resolveNotesDir, validateNotesDir, writeInstall} from '../lib/install.mjs';
+import {defaultNotesDir, expandHome, installedConfig, installedNotesDir, notesDirFor, npx, planInstall, readProject, resolveNotesDir, validateNotesDir, writeInstall} from '../lib/install.mjs';
+import {maxOwnStyle, styleById, styles, unstyledExample, validateLanguage} from '../lib/styles.mjs';
 import {defaultCustomSections, defaultRecord, defaultSkip, exclusions, folderFor, kindById, kinds, maxDetails, normalizeSelection, parseSections, selectedKinds, validateSections, validateText} from '../lib/kinds.mjs';
 import {baseName, knownVaults, planExtras, vaultRootOf, writeExtras} from '../lib/obsidian.mjs';
 import {applyCleanup, cleanupEmpty, migrateSelection, planCleanup, verifyInstall} from '../lib/cleanup.mjs';
 import {colorDiffLine, diffStat, diffStyle, unifiedDiff} from '../lib/diff.mjs';
 import {planSummaries, summaryName, writeSummaries} from '../lib/summary.mjs';
+import {lintLines, planLint, runLint} from '../lib/lint.mjs';
 import {Back, Cancelled, browsePrompt, c, checklistPrompt, confirmPrompt, displayPath, glyph, inputPrompt, listWrap, pagerPrompt, run, selectPrompt, visibleLength} from '../lib/ui.mjs';
 
-const npx = 'npx --yes github:andyqioe/auto-note-taker';
 const usage = `Usage: auto-note-taker [--project PATH] [--notes-dir PATH] [--record KINDS] [--skip ITEMS] [--add-kind KIND]...
-                       [--add-skip TEXT]... [--obsidian-extras | --no-obsidian-extras] [--headless] [--yes] [--check]
+                       [--add-skip TEXT]... [--style STYLES] [--own-style TEXT | --no-own-style] [--language NAME]
+                       [--obsidian-extras | --no-obsidian-extras] [--headless] [--yes] [--check]
        auto-note-taker update [--project PATH] [--add-kind KIND [--kind-sections LIST] [--kind-details TEXT]]...
-                       [--remove-kind KIND]... [--dry-run] [--yes]
+                       [--remove-kind KIND]... [--style STYLES] [--own-style TEXT | --no-own-style] [--language NAME]
+                       [--dry-run] [--yes]
+       auto-note-taker lint [--project PATH] [--style STYLES] [--strict] [--all] [--format json] [NOTE...]
 
 Installs or updates one managed block in AGENTS.md telling agents which moments to record as Obsidian notes,
 and which to leave out, and prints the diff of what it changed. Run in a terminal with no flags to choose
@@ -33,6 +37,12 @@ everything interactively; the confirm screen shows the same diff on d.
                           (default: ${defaultCustomSections.join(', ')})
   --kind-details TEXT     how agents should write the kind of your own just added, in your words
   --add-skip TEXT         also never record this, in your words
+  --style STYLES          comma-separated writing styles notes follow, or "none" (default: last choice, else none)
+                          ${styles.map(s => s.id).join(', ')}
+  --own-style TEXT        how notes should read, in your words; it adds to any --style
+  --no-own-style          drop the style in your own words
+  --language NAME         write notes in this language, such as English, or "match" to write in the language
+                          the user writes in (default: last choice, else match)
   --obsidian-extras       also install the note styling snippet and a Bases dashboard into the notes' vault
   --no-obsidian-extras    never offer them
   --headless              let agents write notes without asking; by default they ask a Yes/No question before each
@@ -41,36 +51,51 @@ everything interactively; the confirm screen shows the same diff on d.
   --check                 report whether the block is current, and print the diff an install would make,
                           without writing
 
-update changes which kinds an existing install records, and keeps its notes folder, exclusions and headless
-setting. It also brings an older install up to date: a kind whose name holds its instructions gets a short name,
+update changes which kinds an existing install records, its writing styles and its language, and keeps its
+notes folder, exclusions and headless setting. It also brings an older install up to date: a kind whose name holds its instructions gets a short name,
 flat notes move into <kind>/<category>/<sub-category>/ folders with every link to them rewritten, and files and
 empty folders earlier versions left behind are removed (never a note). In a terminal with no kinds named, it asks
 which to add or remove. Everything it writes is read back and checked.
 
   --add-kind KIND         as above; giving a kind of your own a name it already has replaces its definition
   --remove-kind KIND      stop recording a kind, by id or name; its notes stay where they are
-  --dry-run               print everything update would change, and change nothing`;
+  --style, --own-style, --no-own-style, --language   as above
+  --dry-run               print everything update would change, and change nothing
+
+lint checks notes against the writing styles the install chose, with the rules a script can check: sentence
+length, the passive voice, tenses, word lists, semicolons and, for BLUF, the banner. It skips front matter, code,
+headings, tables and verbatim quotes, and it changes nothing. A warning is a question, not an error.
+
+  NOTE...                 the notes to check (default: every note in the installed notes folder)
+  --style STYLES          check against these styles instead of the installed ones
+  --strict                exit 1 when there is a warning
+  --all                   list every warning, not the first 20 of each note
+  --format json           print one object per note: {file, sentences, warnings}`;
 
 const args = process.argv.slice(2);
-const updating = args[0] === 'update';
-if (updating) args.shift();
+const updating = args[0] === 'update', linting = args[0] === 'lint';
+if (updating || linting) args.shift();
 const options = {addKind: [], addRecord: [], removeKind: [], addSkip: []};
 let check = false, yes = false, headless = false, dryRun = false, extras;
+// Styles and the language are undefined until a flag sets them, so a run without the flags keeps the installed choice.
 const list = v => v === 'none' ? [] : v.split(',').map(x => x.trim()).filter(Boolean);
-const valueFlags = ['--project', '--notes-dir', '--record', '--skip', '--add-kind', '--kind-sections', '--kind-details', '--add-skip', '--remove-kind'];
-// update edits the kinds of an install and nothing else, so flags that would change the rest of it are refused.
-const updateFlags = ['--project', '--add-kind', '--kind-sections', '--kind-details', '--remove-kind', '--dry-run', '--yes', '-y', '--help', '-h'];
+const valueFlags = ['--project', '--notes-dir', '--record', '--skip', '--add-kind', '--kind-sections', '--kind-details', '--add-skip', '--remove-kind',
+  '--style', '--own-style', '--language'];
+// update edits the kinds, styles and language of an install and nothing else, so flags that would change the rest are refused.
+const updateFlags = ['--project', '--add-kind', '--kind-sections', '--kind-details', '--remove-kind', '--style', '--own-style', '--no-own-style',
+  '--language', '--dry-run', '--yes', '-y', '--help', '-h'];
 function parse() {
   let ownKind = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (updating && !updateFlags.includes(arg) && arg.startsWith('-'))
-      throw new Error(`update only adds or removes kinds; run the installer without "update" to use ${arg}`);
+      throw new Error(`update only changes kinds, styles and the language; run the installer without "update" to use ${arg}`);
     if (arg === '--help' || arg === '-h') { console.log(usage); process.exit(0); }
     if (arg === '--check') { check = true; continue; }
     if (arg === '--dry-run' && updating) { dryRun = true; continue; }
     if (arg === '--yes' || arg === '-y') { yes = true; continue; }
     if (arg === '--headless') { headless = true; continue; }
+    if (arg === '--no-own-style') { options.ownStyle = ''; continue; }
     if (arg === '--obsidian-extras' || arg === '--no-obsidian-extras') { extras = arg === '--obsidian-extras'; continue; }
     if (!valueFlags.includes(arg) || args[i + 1] === undefined || args[i + 1].startsWith('--') || (arg === '--remove-kind' && !updating))
       throw new Error(`Invalid argument: ${arg}`);
@@ -89,6 +114,9 @@ function parse() {
       ownKind[field] = field === 'sections' ? parseSections(value) : value;
     } else if (arg === '--remove-kind') options.removeKind.push(value.trim());
     else if (arg === '--add-skip') options.addSkip.push(value);
+    else if (arg === '--style') options.style = list(value);
+    else if (arg === '--own-style') options.ownStyle = value;
+    else if (arg === '--language') options.language = lower(value) === 'match' ? '' : value;
     else options[arg.slice(2)] = value;
   }
 }
@@ -113,9 +141,16 @@ function selectionFrom(prior) {
     folders: base.folders,
     customKinds: [...(options.record ? [] : base.customKinds).filter(k => !added.has(lower(k.name)) && !removed({id: '', label: k.name})), ...options.addKind],
     skip: options.skip ?? base.skip, customSkips: [...(options.skip ? [] : base.customSkips), ...options.addSkip],
+    styles: options.style ?? base.styles, ownStyle: options.ownStyle ?? base.ownStyle, language: options.language ?? base.language,
   });
 }
 function labels(selection) { return selectedKinds(selection).map(k => k.label).join(', '); }
+/** The styles a selection writes in, as a reader names them, for example "ASD-STE100, your own". */
+const styleLabels = sel => [...sel.styles.map(id => styleById(id).label), ...(sel.ownStyle ? ['your own'] : [])].join(', ') || 'none';
+const languageLabel = sel => sel.language || 'the language the user writes in';
+/** The flags that recreate a selection's styles and language; only what differs from the defaults. */
+const styleFlags = sel => [...(sel.styles.length ? [`--style ${sel.styles.join(',')}`] : []), ...(sel.ownStyle ? [`--own-style ${quote(sel.ownStyle)}`] : []),
+  ...(sel.language ? [`--language ${quote(sel.language)}`] : [])];
 
 // Paths under home print as "$HOME/…" so a printed command stays short and still works when pasted into a shell.
 function quote(s) {
@@ -181,7 +216,7 @@ async function direct() {
   }
   if (await writeInstall(plan)) {
     await verifyInstall(plan);
-    console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
+    console.log(`Installed: ${plan.target}\nNotes: ${plan.notesDir}\nRecording: ${labels(plan.selection)}\nWriting style: ${styleLabels(plan.selection)}\nLanguage: ${languageLabel(plan.selection)}\nAsk before each note: ${headless ? 'no (headless)' : 'yes'}`);
     for (const s of await refreshSummaries(plan)) console.log(summaryLine(plan, s));
     printDiff(plan);
   } else {
@@ -217,6 +252,15 @@ function kindChanges(before, after) {
   };
 }
 
+/** Whether an update changes the writing styles or the language, and the flags that repeat that change. */
+function styleChanges(before, after) {
+  const styled = before.styles.join() !== after.styles.join() || before.ownStyle !== after.ownStyle, worded = before.language !== after.language;
+  const flags = [...(before.styles.join() !== after.styles.join() ? [`--style ${after.styles.join(',') || 'none'}`] : []),
+    ...(before.ownStyle !== after.ownStyle ? [after.ownStyle ? `--own-style ${quote(after.ownStyle)}` : '--no-own-style'] : []),
+    ...(worded ? [`--language ${quote(after.language || 'match')}`] : [])];
+  return {styled, worded, styleFlags: flags};
+}
+
 /** A managed dashboard lists one view per kind, so it follows the kinds; an install without one does not get one. */
 async function refreshDashboard(plan) {
   const notesAbsolute = resolveNotesDir(plan.root, plan.notesDir), vault = vaultRootOf(notesAbsolute);
@@ -235,7 +279,8 @@ async function planUpdate(project, installed, selection) {
   const plan = await planInstall(project, installed.notesDir, migrated.selection, {headless: installed.headless});
   const cleanup = await planCleanup({root: plan.root, notesDir: plan.notesDir, before: installed.selection, after: plan.selection, migrations: migrated.migrations});
   // Kinds are compared after migration, so a renamed kind reads as migrated, not as one removed and one added.
-  return {plan, cleanup, migrations: migrated.migrations, ...kindChanges(migrateSelection(installed.selection).selection, plan.selection)};
+  return {plan, cleanup, migrations: migrated.migrations, ...kindChanges(migrateSelection(installed.selection).selection, plan.selection),
+    ...styleChanges(installed.selection, plan.selection)};
 }
 
 /** How a cleanup reads in a report and in the review: paths are shown from the notes folder. */
@@ -257,7 +302,7 @@ async function update() {
   const project = options.project ?? process.cwd();
   const installed = await installedFor(project);
   const up = await planUpdate(project, installed, selectionFrom(installed.selection));
-  const {plan, cleanup, added, changed, removed} = up;
+  const {plan, cleanup, added, changed, removed, styled, worded} = up;
   const summaries = (await planSummaries({root: plan.root, notesDir: plan.notesDir, selection: plan.selection})).filter(s => s.action !== 'current');
   if (plan.change === 'current' && cleanupEmpty(cleanup) && !summaries.some(s => s.action !== 'keep (edited by you)')) {
     console.log(`Already current: ${plan.target}\nRecording: ${labels(plan.selection)}`);
@@ -268,7 +313,8 @@ async function update() {
   const head = dryRun ? `Dry run, nothing written: ${plan.target}` : plan.change === 'current' ? `Already current: ${plan.target}` : `Updated: ${plan.target}`;
   console.log([head,
     ...added.map(k => `Added: ${k.label} (${folder(k)})`), ...changed.map(k => `Changed: ${k.label} (${folder(k)})`), ...removed.map(k => `Removed: ${k.label}`),
-    `Recording: ${labels(plan.selection)}`, ...summary].join('\n'));
+    `Recording: ${labels(plan.selection)}`, ...(styled ? [`Writing style: ${styleLabels(plan.selection)}`] : []),
+    ...(worded ? [`Language: ${languageLabel(plan.selection)}`] : []), ...summary].join('\n'));
   if (dryRun && summaries.length) console.log(`Would rebuild ${summaryName} in: ${summaries.map(s => path.relative(cleanup.notes, path.dirname(s.path)) || '.').join(', ')}`);
   if (!dryRun) {
     if (await writeInstall(plan)) await verifyInstall(plan);
@@ -286,17 +332,20 @@ async function updateWizard() {
   const project = options.project ?? process.cwd();
   const installed = await installedFor(project);
   out('');
-  out(`${c.accent(glyph.done)}  ${c.bold('auto-note-taker update')}  ${c.dim('· change which kinds of notes agents keep')}`);
+  out(`${c.accent(glyph.done)}  ${c.bold('auto-note-taker update')}  ${c.dim('· change which notes agents keep, and how they read')}`);
   out(c.accent(glyph.bar));
   const {root} = await readProject(project);
   out(`${c.green(glyph.done)}  ${c.dim('Project')}  ${displayPath(root, wide() + 18)}`);
   out(`${c.green(glyph.done)}  ${c.dim('Notes folder')}  ${displayPath(resolveNotesDir(root, installed.notesDir), wide() + 13)}`);
-  let selection = installed.selection, up;
+  // Each step changes only its own part of the selection and leaves one summary line. Going back from a step (or
+  // from the confirm screen) erases the line of the step before it and asks that step again.
+  const asks = [sel => chooseKinds(sel, {title: 'Record', back: false}), sel => chooseStyles(sel, {back: true}), sel => chooseLanguage(sel, {back: true})];
+  let selection = installed.selection, up, at = 0;
   for (;;) {
     try {
-      selection = await chooseKinds(selection, {title: 'Record', back: false});
+      while (at < asks.length) { selection = await asks[at](selection); at++; }
       up = await planUpdate(project, installed, selection);
-      const {plan, cleanup, added, changed, removed, migrations} = up;
+      const {plan, cleanup, added, changed, removed, migrations, styled, worded} = up;
       const summaries = (await planSummaries({root: plan.root, notesDir: plan.notesDir, selection: plan.selection})).filter(s => s.action === 'create' || s.action === 'update');
       if (plan.change === 'current' && cleanupEmpty(cleanup) && !summaries.length) { out(c.dim('   Nothing changed.')); return; }
       const folder = k => displayPath(resolveNotesDir(plan.root, plan.notesDir) + '/' + k.folder, wide());
@@ -308,6 +357,7 @@ async function updateWizard() {
         ...rows('add', added), ...rows('change', changed), ...removed.map((k, i) => `${c.dim((i ? '' : 'remove').padEnd(8))}  ${k.label}  ${c.dim('· its notes stay')}`),
         ...migrations.map((m, i) => `${c.dim((i ? '' : 'migrate').padEnd(8))}  ${m.to.name}  ${c.dim('← ' + m.from.name)}`),
         ...listWrap(selectedKinds(plan.selection).map(k => k.label), wide() + 10).map((line, i) => `${c.dim((i ? '' : 'record').padEnd(8))}  ${line}`),
+        ...(styled ? [`${c.dim('style   ')}  ${styleLabels(plan.selection)}`] : []), ...(worded ? [`${c.dim('language')}  ${languageLabel(plan.selection)}`] : []),
         ...(cleanup.moves.length || cleanup.edits.length ? [`${c.dim('notes   ')}  move ${count(cleanup.moves.length, 'note')} into folders, rewrite links in ${count(cleanup.edits.length, 'note')}`] : []),
         ...cleanup.removals.map((r, i) => `${c.dim((i ? '' : 'tidy').padEnd(8))}  remove ${path.relative(cleanup.notes, r.path)}${r.kind === 'folder' ? '/' : ''}  ${c.dim('· ' + r.reason)}`),
         ...(summaries.length || cleanup.moves.length ? [`${c.dim('summary ')}  rebuild ${summaryName} in each kind's folder`] : []),
@@ -315,9 +365,9 @@ async function updateWizard() {
       ]}, [...summary, ...diffs]);
       if (!confirmed) { out(c.dim('   Nothing changed.')); return; }
       break;
-    } catch (e) { if (!(e instanceof Back)) throw e; process.stdout.write('\x1b[1A\r\x1b[J'); }
+    } catch (e) { if (!(e instanceof Back)) throw e; at = Math.max(0, at - 1); process.stdout.write('\x1b[1A\r\x1b[J'); }
   }
-  const {plan, cleanup, added, changed, removed} = up;
+  const {plan, cleanup, added, changed, removed, styleFlags: changedStyles} = up;
   if (await writeInstall(plan)) await verifyInstall(plan);
   await applyCleanup(cleanup);
   const summaries = await refreshSummaries(plan);
@@ -337,7 +387,7 @@ async function updateWizard() {
   out(`${c.green(glyph.check)}  Verified: everything reads back as written`);
   out('');
   printCommand(out, 'Same update without prompts:', [`${npx} update`, `--project ${quote(plan.root)}`,
-    ...[...added, ...changed].flatMap(kindFlags), ...removed.map(k => `--remove-kind ${quote(k.custom ? k.label : k.id)}`)]);
+    ...[...added, ...changed].flatMap(kindFlags), ...removed.map(k => `--remove-kind ${quote(k.custom ? k.label : k.id)}`), ...changedStyles]);
   out('');
 }
 
@@ -380,6 +430,48 @@ async function chooseKinds(sel, {title, back}) {
     customKinds: custom.filter(k => ticked.includes('custom:' + k.name))});
 }
 
+/**
+ * The Style checklist: every built-in style with an example of how it reads, the user's own style when there is
+ * one, and a row to describe or rewrite it. Ticking nothing keeps notes in the shared Writing rules alone.
+ */
+async function chooseStyles(sel, {back}) {
+  let own = sel.ownStyle;
+  let ticked = [...sel.styles, ...(own ? ['own'] : [])];
+  for (;;) {
+    const result = await run(checklistPrompt({title: 'Writing style', back, none: 'none', add: own ? 'Rewrite your own style…' : 'Describe your own style…',
+      detail: [`Without a style, an agent writes: ${unstyledExample}`], options: [
+        ...styles.map(s => ({label: s.label, hint: s.hint, value: s.id, example: s.example, checked: ticked.includes(s.id)})),
+        ...(own ? [{label: 'Your own style', hint: own, value: 'own', checked: ticked.includes('own')}] : []),
+      ]}));
+    ticked = result.checked;
+    if (!result.add) break;
+    try {
+      own = (await run(inputPrompt({transient: true, title: 'How should notes read?', initial: own,
+        placeholder: 'for example: keep each note under one screen', validate: v => validateText(v, 'the style', maxOwnStyle)}))).trim();
+      if (!ticked.includes('own')) ticked.push('own');
+    } catch (e) { if (!(e instanceof Back)) throw e; }
+  }
+  return normalizeSelection({...sel, styles: styles.map(s => s.id).filter(id => ticked.includes(id)), ownStyle: ticked.includes('own') ? own : ''});
+}
+
+/** The notes' language: the user's own (the default), English, the one chosen before, or one typed in. */
+async function chooseLanguage(sel, {back}) {
+  const options = [
+    {label: 'Match the user', hint: 'write in the language the user writes in', value: {language: ''}},
+    {label: 'English', hint: 'always, whatever language the user writes in', value: {language: 'English'}},
+    ...(sel.language && lower(sel.language) !== 'english' ? [{label: sel.language, hint: 'always', value: {language: sel.language}}] : []),
+    {label: 'Type a language…', value: {type: true}, transient: true},
+  ];
+  const initial = Math.max(0, options.findIndex(o => o.value.language !== undefined && lower(o.value.language) === lower(sel.language)));
+  for (;;) {
+    const choice = await run(selectPrompt({title: 'Note language', options, initial, back}));
+    try {
+      const language = choice.type ? (await run(inputPrompt({title: 'Note language', placeholder: 'for example: Deutsch', validate: validateLanguage}))).trim() : choice.language;
+      return normalizeSelection({...sel, language});
+    } catch (e) { if (!(e instanceof Back)) throw e; }
+  }
+}
+
 async function wizard() {
   const out = s => process.stdout.write(s + '\n');
   out('');
@@ -390,7 +482,7 @@ async function wizard() {
   const steps = [];
   if (!options.project) steps.push(chooseProject);
   if (!options['notes-dir']) steps.push(chooseNotes);
-  steps.push(chooseRecord, chooseSkip, chooseExtras, confirmInstall);
+  steps.push(chooseRecord, chooseSkip, chooseStyle, chooseNoteLanguage, chooseExtras, confirmInstall);
   // A step returns 'skipped' when it had nothing to ask, so going back passes over it instead of bouncing forward.
   // A step that asked leaves exactly one summary line; going back to it erases that line before asking again.
   const printed = [];
@@ -424,7 +516,7 @@ async function wizard() {
   const sel = plan.selection;
   printCommand(out, 'Same install without prompts:', [npx, `--project ${quote(plan.root)}`, `--notes-dir ${quote(plan.notesDir)}`,
     `--record ${sel.record.join(',') || 'none'}`, ...selectedKinds(sel).filter(k => k.custom).flatMap(kindFlags),
-    `--skip ${sel.skip.join(',') || 'none'}`, ...sel.customSkips.map(t => `--add-skip ${quote(t)}`),
+    `--skip ${sel.skip.join(',') || 'none'}`, ...sel.customSkips.map(t => `--add-skip ${quote(t)}`), ...styleFlags(sel),
     ...(state.extras ? ['--obsidian-extras'] : []), ...(headless ? ['--headless'] : [])]);
   out('');
 }
@@ -513,6 +605,18 @@ async function chooseSkip(state) {
     customSkips: custom.filter(t => ticked.includes('custom:' + t))});
 }
 
+async function chooseStyle(state) {
+  const sel = await startingSelection(state);
+  if (options.style) return 'skipped';
+  state.selection = await chooseStyles(sel, {back: true});
+}
+
+async function chooseNoteLanguage(state) {
+  const sel = await startingSelection(state);
+  if (options.language !== undefined) return 'skipped';
+  state.selection = await chooseLanguage(sel, {back: true});
+}
+
 async function chooseExtras(state) {
   const plan = await planInstall(state.project, state.notes ?? options['notes-dir'], state.selection, {headless});
   state.plan = plan;
@@ -547,21 +651,50 @@ async function confirmInstall(state) {
     `${c.dim('notes       ')}  ${displayPath(notesAbsolute, wide())}${existsSync(notesAbsolute) ? '' : c.dim('  · new')}`,
     ...rows('record', chosen.map(k => k.label)),
     ...rows('folders', chosen.map(k => k.folder === '.' ? '(the notes folder)' : k.folder + '/'), '  '),
+    ...rows('style', styleLabels(plan.selection).split(', ')),
+    `${c.dim('language    ')}  ${languageLabel(plan.selection)}`,
     `${c.dim('ask first   ')}  ${headless ? 'no, agents write notes without asking (--headless)' : 'yes, a Yes/No question before each note'}`,
     ...(skipped.length ? rows('never record', skipped) : [`${c.dim('never record')}  ${c.dim('nothing excluded')}`]),
     changesRow(plan, 'changes     '),
   ]});
 }
 
+/** lint takes its own few flags and the notes to check; it never prompts and never writes. */
+async function lint() {
+  const opts = {files: []};
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--help' || arg === '-h') { console.log(usage); return; }
+    if (arg === '--strict' || arg === '--all') { opts[arg.slice(2)] = true; continue; }
+    if (['--project', '--style', '--format'].includes(arg)) {
+      if (args[i + 1] === undefined || args[i + 1].startsWith('--')) throw new Error(`${arg} needs a value`);
+      opts[arg.slice(2)] = args[++i];
+      continue;
+    }
+    if (arg.startsWith('-')) throw new Error(`Invalid argument: ${arg}`);
+    opts.files.push(arg);
+  }
+  if (opts.format !== undefined && opts.format !== 'json') throw new Error('--format takes json');
+  const plan = await planLint({project: opts.project ?? process.cwd(), style: opts.style === undefined ? undefined : list(opts.style), files: opts.files});
+  const reports = await runLint(plan);
+  if (opts.format === 'json') console.log(JSON.stringify(reports.map(r => ({...r, file: path.relative(plan.root, r.file) || r.file})), null, 1));
+  else console.log(lintLines(reports, {root: plan.root, styles: plan.styles, limit: opts.all ? Infinity : 20}).join('\n'));
+  if (opts.strict && reports.some(r => r.warnings.length)) process.exitCode = 1;
+}
+
 // Runs last, so every helper above is defined before a prompt can call it.
 try {
-  parse();
-  const terminal = process.stdin.isTTY && process.stdout.isTTY && !yes;
-  if (updating) {
-    if (terminal && !dryRun && !options.addKind.length && !options.addRecord.length && !options.removeKind.length) await updateWizard();
-    else await update();
-  } else if (terminal && !check && !(options.project && options['notes-dir'])) await wizard();
-  else await direct();
+  if (linting) await lint();
+  else {
+    parse();
+    const terminal = process.stdin.isTTY && process.stdout.isTTY && !yes;
+    if (updating) {
+      if (terminal && !dryRun && !options.addKind.length && !options.addRecord.length && !options.removeKind.length
+        && options.style === undefined && options.ownStyle === undefined && options.language === undefined) await updateWizard();
+      else await update();
+    } else if (terminal && !check && !(options.project && options['notes-dir'])) await wizard();
+    else await direct();
+  }
 } catch (error) {
   if (error instanceof Cancelled) { process.exitCode = 130; }
   else { console.error(`auto-note-taker: ${error.message}`); process.exitCode = 1; }

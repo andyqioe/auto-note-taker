@@ -162,6 +162,12 @@ send("enter")
 send("end", "enter"); send(*"anything about the CI provider"); send("enter")
 shoot("wizard-never-record")
 send("enter")
+send("space", "down", "down", "space")          # tick ASD-STE100 and BLUF
+shoot("wizard-style")
+send("enter")
+send("down")                                    # always English
+shoot("wizard-language")
+send("enter")
 shoot("wizard-styling")
 send("enter")
 shoot("wizard-confirm")
@@ -180,6 +186,8 @@ shoot("wizard-update-sections", "npx auto-note-taker update")
 send("enter")
 send(*"keep To-dos/To-dos.md as a summary page linking every to-do"); send("enter")
 send("enter")
+send("enter")                                   # keep the writing styles
+send("enter")                                   # keep the language
 shoot("wizard-update", "npx auto-note-taker update")
 send("d", "end")                                # review the AGENTS.md diff at the new kind's section, then back
 shoot("wizard-review", "npx auto-note-taker update")

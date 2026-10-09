@@ -35,7 +35,7 @@ const block=async root=>(await fs.readFile(path.join(root,'AGENTS.md'),'utf8'));
 const section=(text,title)=>text.includes(`\n### ${title}\n`);
 test('a fresh install records pivots and challenges, each in its own folder, and leaves out the default exclusions',async t=>{
  const root=await project(t);const r=run(root);assert.equal(r.status,0,r.stderr);
- assert.match(r.stdout,/Notes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n\n--- \/dev\/null\n/);
+ assert.match(r.stdout,/Notes: Agent Notes\nRecording: Pivots, Challenges & fixes\nWriting style: none\nLanguage: the language the user writes in\nAsk before each note: yes\n\n--- \/dev\/null\n/);
  const text=await block(root);
  assert.ok(section(text,'Pivots')&&section(text,'Challenges and how they were overcome'));
  assert.ok(!section(text,'Tactical direction and disagreements')&&!section(text,'Decisions and tradeoffs'),'kinds not chosen are not rendered');
@@ -124,7 +124,7 @@ test('update refuses what it cannot do and leaves AGENTS.md untouched',async t=>
  assert.match(update(root,'--add-kind','gotchas').stderr,/no auto-note-taker block to update; install first/);
  assert.equal(run(root).status,0);const installed=await fs.readFile(p,'utf8');
  assert.match(update(root).stdout,/^Already current: /,'update with nothing named tidies up, and here has nothing to do');
- for(const [args,error] of [[['--notes-dir','x'],/only adds or removes kinds/],[['--headless'],/only adds or removes kinds/],
+ for(const [args,error] of [[['--notes-dir','x'],/only changes kinds, styles and the language/],[['--headless'],/only changes kinds, styles and the language/],
   [['--remove-kind','nope'],/"nope" is not recorded here/],[['--kind-sections','A'],/must follow --add-kind "NAME=WHEN"/],
   [['--add-kind','gotchas','--kind-details','x'],/must follow --add-kind "NAME=WHEN"/],[['--add-kind','nonsense'],/built-in kind .* or one of your own/],
   [['--add-kind','X=y','--kind-sections','A, a'],/listed twice/],[['--add-kind','X=y','--kind-sections','A `B`'],/backticks/],

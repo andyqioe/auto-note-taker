@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {browsePrompt, checklistPrompt, pagerPrompt, completePath, confirmPrompt, displayPath, fit, inputPrompt, parseKeys, selectPrompt, visibleLength} from '../lib/ui.mjs';
+import {browsePrompt, checklistPrompt, pagerPrompt, completePath, confirmPrompt, displayPath, fit, inputPrompt, parseKeys, selectPrompt, visibleLength, wrapText} from '../lib/ui.mjs';
 
 const press = (prompt, ...keys) => keys.reduce((s, k) => prompt.key(s, typeof k === 'string' ? {name: 'char', ch: k} : k), prompt.init());
 const k = name => ({name});
@@ -144,4 +144,21 @@ test('the pager wraps long lines instead of cutting them, styling every piece al
  assert.deepEqual(body.map(l=>plain(l).slice(3)),['+'+'x'.repeat(15),'x'.repeat(15)+'E','ND',' short']);
  assert.ok(body.slice(0,3).every(l=>l.includes('\x1b[32m'))&&!body[3].includes('\x1b[32m'),'every piece of the long line is green');
  assert.ok(body.every(l=>visibleLength(l)<=20));
+});
+
+test('an option example wraps under its label and every row fits the width', () => {
+  const example = 'The job lock now expires with the lease of the worker. A worker that crashes does not block its retries.';
+  const plain = s => s.replace(/\x1b\[[0-9;]*m/g, '');
+  for (const [prompt, column] of [[checklistPrompt({title: 'T', detail: ['Without a style: ' + example], options: [{label: 'STE', value: 'ste', example}, {label: 'BLUF', value: 'bluf'}]}), 6],
+    [selectPrompt({title: 'T', options: [{label: 'STE', value: 'ste', example}, {label: 'BLUF', value: 'bluf'}]}), 4]]) {
+    for (const width of [84, 50]) {
+      const lines = prompt.view(prompt.init(), width).map(plain);
+      assert.ok(lines.every(l => visibleLength(l) <= width), `${width}: ${lines.find(l => visibleLength(l) > width)}`);
+      const under = lines.slice(lines.findIndex(l => l.includes('STE')) + 1, lines.findIndex(l => l.includes('BLUF')));
+      assert.ok(under.length >= 2, 'the example takes its own lines under the option');
+      assert.equal(under.map(l => l.slice(column + 1)).join(' '), example, 'the example reads whole, in order');
+      assert.ok(under.every(l => l.startsWith('│' + ' '.repeat(column)) && l[column + 1] !== ' '), 'the example starts under the label');
+    }
+  }
+  assert.deepEqual(wrapText('one two three', 7), ['one two', 'three']);
 });

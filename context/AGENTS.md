@@ -64,9 +64,11 @@ cssclasses: [agent-note]
 ### Writing
 
 - Write so a future agent can act on the note without reading the conversation: present tense, short sentences, one idea per bullet, the user's own terms for project concepts.
-- Write prose in the language the user writes in; keep the required section headings as given.
+{{language_line}}
 - Distinguish user requirements and operating assumptions from measured observations, implementation status, and validation evidence; label each where it could be confused.
 - Never claim something is implemented or verified before it has happened.
+
+{{style_section}}
 
 ### Implementation backlink
 

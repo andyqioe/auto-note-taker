@@ -68,6 +68,6 @@ test('non-interactive runs never prompt, keep the summary, and show the diff aft
   const project = await tmp(t);
   const r = spawnSync(process.execPath, [cli, '--project', project], {encoding: 'utf8', input: ''});
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\nAsk before each note: yes\n\n--- \/dev\/null\n\+\+\+ AGENTS\.md\n@@ -0,0 \+1,\d+ @@\n\+<!-- BEGIN /);
+  assert.match(r.stdout, /^Installed: .*AGENTS\.md\nNotes: Agent Notes\nRecording: Pivots, Challenges & fixes\nWriting style: none\nLanguage: the language the user writes in\nAsk before each note: yes\n\n--- \/dev\/null\n\+\+\+ AGENTS\.md\n@@ -0,0 \+1,\d+ @@\n\+<!-- BEGIN /);
   assert.ok(!r.stdout.includes('\x1b['), 'piped output has no color codes');
 });
